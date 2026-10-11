@@ -1,0 +1,19 @@
+# Single-node dev config. The secrets here are only for local use.
+metadata_dir = "/var/lib/garage/meta"
+data_dir = "/var/lib/garage/data"
+db_engine = "sqlite"
+
+replication_factor = 1
+
+rpc_bind_addr = "[::]:3901"
+rpc_public_addr = "127.0.0.1:3901"
+rpc_secret = "909be98d3d31eb1e4da4105cd690149287db38a13672a3c57573ce8fc8a6bee6"
+
+[s3_api]
+s3_region = "us-east-1"
+api_bind_addr = "[::]:3900"
+root_domain = ".s3.garage.localhost"
+
+[admin]
+api_bind_addr = "[::]:3903"
+admin_token = "5fea9fec6ead802ba30b05f65a8f5503"

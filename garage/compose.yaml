@@ -1,0 +1,17 @@
+# Local S3-compatible storage for development. Not for production use.
+# Start with `docker compose up -d`, then run ./setup.sh once.
+services:
+  garage:
+    image: docker.io/dxflrs/garage:v2.4.1
+    restart: unless-stopped
+    ports:
+      - "3900:3900" # S3 API
+      - "3903:3903" # admin API
+    volumes:
+      - ./garage.toml:/etc/garage.toml:ro,z
+      - garage-meta:/var/lib/garage/meta
+      - garage-data:/var/lib/garage/data
+
+volumes:
+  garage-meta:
+  garage-data:
