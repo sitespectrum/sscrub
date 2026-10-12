@@ -180,8 +180,8 @@ export default {
         // Incoming protocol and port is taken from the worker's environment.
         // Local dev mode uses plain http on 8787, and it's possible to deploy
         // a worker on plain http. B2 only supports https on 443
-        url.protocol = HTTPS_PROTOCOL;
-        url.port = HTTPS_PORT;
+        url.protocol = env['UPSTREAM_PROTOCOL'] ?? HTTPS_PROTOCOL;
+        url.port = env['UPSTREAM_PORT'] ?? HTTPS_PORT;
 
         // Remove leading slashes from path
         let path = url.pathname.replace(/^\//, '');
