@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace SscrubServer.Models;
 
 public enum AssetStatus
@@ -19,9 +21,12 @@ public class Asset
     public DateTime? CaptureDate { get; set; }
     public DateTime UploadDate { get; set; }
     public Guid SinkId { get; set; }
+    [JsonConverter(typeof(JsonStringEnumConverter))]
     public AssetStatus Status { get; set; }
     public string ContentType { get; set; } = string.Empty;
+    [JsonIgnore]
     public string UploadId { get; set; } = string.Empty;
 
+    [JsonIgnore]
     public virtual Sink Sink { get; set; } = null!;
 }

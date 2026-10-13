@@ -1,12 +1,10 @@
-using System.Net;
-using System.Security.Cryptography;
-using System.Text;
 using Amazon.S3;
 using Amazon.S3.Model;
 using dotenv.net;
-using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Scalar.AspNetCore;
 using SscrubServer;
 using SscrubServer.Extensions;
 using SscrubServer.Models;
@@ -27,6 +25,10 @@ app.UseCors(conf =>
         .AllowAnyHeader()
         .AllowAnyMethod());
 
+app.UseExceptionHandler();
+
+app.UseStatusCodePages();
+
 // DB Migrate
 using (var scope = app.Services.CreateScope())
 {
@@ -37,32 +39,19 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.MapGet("/", (IConfiguration configuration, string objectKey) =>
+    TypedResults.Ok(new ServerInfoResponse("sscrub server")));
+
+app.MapGet("/api/sinks", async (SscrubDbContext db) =>
 {
-    var _secret = Encoding.UTF8.GetBytes(configuration.GetSection("Secrets").GetValue<string>("UrlSigningSecret") ?? "");
-    var _lifetimeSeconds = (long)86_400;
-
-    var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-    var expires = (now / _lifetimeSeconds + 2) * _lifetimeSeconds;
-
-    var path = "/" + objectKey.TrimStart('/');
-    var signature = HMACSHA256.HashData(_secret, Encoding.UTF8.GetBytes($"{expires}\n{path}"));
-
-    var encodedPath = string.Join('/', path.Split('/').Select(Uri.EscapeDataString));
-
-    return $"{encodedPath}?exp={expires}&sig={WebEncoders.Base64UrlEncode(signature)}";
+    return TypedResults.Ok(await db.Sinks.ToListAsync());
 });
 
-app.MapGet("/api/sinks", (SscrubDbContext db) =>
+app.MapPost("/api/sinks", async Task<Results<Created<Sink>, BadRequest<ErrorResponse>>> (
+    SscrubDbContext db,
+    CreateSinkBody body) =>
 {
-    return Results.Ok(db.Sinks.Select(x => new { x.Id, x.Name }));
-});
-
-app.MapPost("/api/sinks", async (SscrubDbContext db, CreateSinkBody body) =>
-{
-    if (string.IsNullOrWhiteSpace(body.Name)) return Results.BadRequest(new
-    {
-        error = "Name can not be empty"
-    });
+    if (string.IsNullOrWhiteSpace(body.Name))
+        return TypedResults.BadRequest(new ErrorResponse("Name can not be empty"));
 
     var sink = new Sink
     {
@@ -73,14 +62,33 @@ app.MapPost("/api/sinks", async (SscrubDbContext db, CreateSinkBody body) =>
     await db.Sinks.AddAsync(sink);
     await db.SaveChangesAsync();
 
-    return Results.Json(new
-    {
-        sink.Id,
-        sink.Name
-    }, statusCode: (int)HttpStatusCode.Created);
+    return TypedResults.Created($"/api/sinks/{sink.Id}", sink);
 });
 
-app.MapPost("/api/uploads", async (
+app.MapGet("/api/sinks/{id:guid}", async Task<Results<Ok<Sink>, NotFound>> (
+    Guid id,
+    SscrubDbContext db) =>
+{
+    var sink = await db.Sinks.FirstOrDefaultAsync(x => x.Id == id);
+    if (sink is null) return TypedResults.NotFound();
+
+    return TypedResults.Ok(sink);
+});
+
+app.MapDelete("/api/sinks/{id:guid}", async Task<Results<Ok, NotFound>> (
+    Guid id,
+    SscrubDbContext db) =>
+{
+    var sink = await db.Sinks.FirstOrDefaultAsync(x => x.Id == id);
+    if (sink is null) return TypedResults.NotFound();
+
+    db.Sinks.Remove(sink);
+    await db.SaveChangesAsync();
+
+    return TypedResults.Ok();
+});
+
+app.MapPost("/api/uploads", async Task<Created<StartUploadResponse>> (
     [FromKeyedServices("asset")] IAmazonS3 s3,
     SscrubDbContext db,
     IOptions<AssetStorageBucketOptions> assetS3Options,
@@ -128,15 +136,10 @@ app.MapPost("/api/uploads", async (
         }));
     }
 
-    return Results.Json(new
-    {
-        asset.Id,
-        partSize,
-        urls
-    }, statusCode: (int)HttpStatusCode.Created);
+    return TypedResults.Created($"/api/uploads/{asset.Id}", new StartUploadResponse(asset.Id, partSize, urls));
 });
 
-app.MapPost("/api/uploads/{id:guid}/complete", async (
+app.MapPost("/api/uploads/{id:guid}/complete", async Task<Results<Accepted, NotFound>> (
     Guid id,
     SscrubDbContext db,
     [FromKeyedServices("asset")] IAmazonS3 s3,
@@ -144,7 +147,7 @@ app.MapPost("/api/uploads/{id:guid}/complete", async (
     CompleteUploadBody body) =>
 {
     var asset = await db.Assets.FirstOrDefaultAsync(x => x.Id == id);
-    if (asset is null) return Results.NotFound();
+    if (asset is null) return TypedResults.NotFound();
 
     await s3.CompleteMultipartUploadAsync(new()
     {
@@ -159,17 +162,61 @@ app.MapPost("/api/uploads/{id:guid}/complete", async (
     asset.Status = AssetStatus.Processing;
     await db.SaveChangesAsync();
 
-    return Results.Accepted();
+    return TypedResults.Accepted((string?)null);
 });
 
-app.MapGet("/api/assets/{id:guid}/presignedUrl", async (Guid id, SscrubDbContext db, AssetUrlSigner signer) =>
+app.MapDelete("/api/uploads/{id:guid}", async Task<Results<Ok, NotFound>> (
+    Guid id,
+    SscrubDbContext db,
+    [FromKeyedServices("asset")] IAmazonS3 s3,
+    IOptions<AssetStorageBucketOptions> assetS3Options) =>
 {
     var asset = await db.Assets.FirstOrDefaultAsync(x => x.Id == id);
-    if (asset is null) return Results.NotFound();
+    if (asset is null) return TypedResults.NotFound();
+
+    await s3.AbortMultipartUploadAsync(new()
+    {
+        BucketName = assetS3Options.Value.Bucket,
+        Key = asset.ObjectKey,
+        UploadId = asset.UploadId,
+    });
+
+    db.Assets.Remove(asset);
+    await db.SaveChangesAsync();
+
+    return TypedResults.Ok();
+});
+
+app.MapGet("/api/assets", async (SscrubDbContext db, Guid? sinkId = null) =>
+{
+    var query = db.Assets.AsQueryable();
+
+    if (sinkId is not null)
+    {
+        query = query.Where(x => x.SinkId == sinkId);
+    }
+
+    return TypedResults.Ok(await query.ToListAsync());
+});
+
+app.MapGet("/api/assets/{id:guid}/presignedUrl", async Task<Results<RedirectHttpResult, NotFound>> (
+    Guid id,
+    SscrubDbContext db,
+    AssetUrlSigner signer) =>
+{
+    var asset = await db.Assets.FirstOrDefaultAsync(x => x.Id == id);
+    if (asset is null) return TypedResults.NotFound();
 
     var url = signer.Sign(asset.ObjectKey);
 
-    return Results.Redirect(url);
+    return TypedResults.Redirect(url);
 });
+
+app.MapOpenApi();
+
+if (app.Environment.IsDevelopment())
+{
+    app.MapScalarApiReference();
+}
 
 app.Run();

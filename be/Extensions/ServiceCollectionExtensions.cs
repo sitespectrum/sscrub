@@ -1,5 +1,6 @@
 using Amazon.S3;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.OpenApi;
 using SscrubServer.Options;
 using SscrubServer.Services;
 
@@ -24,7 +25,29 @@ internal static class ServiceCollectionExtensions
             ResponseChecksumValidation = Amazon.Runtime.ResponseChecksumValidation.WHEN_REQUIRED,
         }));
 
+        services.AddEndpointsApiExplorer();
+        services.AddOpenApi(options =>
+        {
+            options.AddDocumentTransformer((document, context, cancellationToken) =>
+                {
+                    document.Components ??= new OpenApiComponents();
+                    document.Components.SecuritySchemes ??= new Dictionary<string, IOpenApiSecurityScheme>();
+
+                    document.Components.SecuritySchemes.Add("Bearer", new OpenApiSecurityScheme
+                    {
+                        Type = SecuritySchemeType.Http,
+                        Scheme = "bearer",
+                        BearerFormat = "JWT",
+                        Description = "Enter your JWT token"
+                    });
+
+                    return Task.CompletedTask;
+                });
+        });
+
         services.AddSingleton<AssetUrlSigner>();
+
+        services.AddProblemDetails();
 
         services.AddResponseCompression(options => options.EnableForHttps = true);
 
