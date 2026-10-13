@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="sscrub">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#171717"/>
+      <stop offset="1" stop-color="#0A0A0A"/>
+    </linearGradient>
+    <linearGradient id="head" x1="256" y1="120" x2="256" y2="392" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#D946EF"/>
+      <stop offset="1" stop-color="#A21CAF"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="116" fill="url(#bg)"/>
+  <!-- hairline edge so the tile reads on pure black -->
+  <rect x="1.5" y="1.5" width="509" height="509" rx="114.5" fill="none" stroke="#FFFFFF" stroke-opacity=".1" stroke-width="3"/>
+  <!-- clips on the timeline, split by the playhead -->
+  <rect x="128" y="282" width="99" height="52" rx="12" fill="#FFFFFF" fill-opacity=".28"/>
+  <rect x="285" y="282" width="99" height="52" rx="12" fill="#FFFFFF" fill-opacity=".14"/>
+  <!-- playhead: rounded pentagon head + stem -->
+  <path d="M204 140H308V170L256 210L204 170Z" fill="url(#head)" stroke="url(#head)" stroke-width="24" stroke-linejoin="round"/>
+  <rect x="245" y="196" width="22" height="196" rx="11" fill="url(#head)"/>
+</svg>

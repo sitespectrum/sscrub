@@ -1,0 +1,143 @@
+/*
+ * Scoped design tokens for the mockup. Overrides the shadcn variables only
+ * while a `.nle` element is mounted (on body too, so portalled popups match),
+ * so the rest of the app keeps its theme.
+ *
+ * Graphite surfaces (Premiere / Resolve style), brand violet for selection and
+ * primary actions, brand cyan for the playhead.
+ */
+.nle,
+:root:has(.nle) body {
+  --background: oklch(0.165 0.004 270);
+  --foreground: oklch(0.93 0.004 270);
+  --card: oklch(0.195 0.005 270);
+  --card-foreground: oklch(0.93 0.004 270);
+  --popover: oklch(0.215 0.006 270);
+  --popover-foreground: oklch(0.93 0.004 270);
+  --primary: oklch(0.6 0.2 285);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.26 0.006 270);
+  --secondary-foreground: oklch(0.93 0.004 270);
+  --muted: oklch(0.25 0.006 270);
+  --muted-foreground: oklch(0.64 0.012 270);
+  --accent: oklch(0.26 0.008 270);
+  --accent-foreground: oklch(0.93 0.004 270);
+  --border: oklch(1 0 0 / 0.075);
+  --input: oklch(1 0 0 / 0.1);
+  --ring: oklch(0.6 0.2 285 / 0.6);
+  --sidebar: oklch(0.185 0.005 270);
+  --sidebar-border: oklch(1 0 0 / 0.075);
+  --radius: 0.5rem;
+
+  --nle-app: oklch(0.13 0.004 270);
+  --nle-panel: oklch(0.18 0.005 270);
+  --nle-raised: oklch(0.215 0.006 270);
+  --nle-well: oklch(0.145 0.004 270);
+  --nle-hairline: oklch(1 0 0 / 0.06);
+  --nle-playhead: oklch(0.8 0.13 210);
+  --nle-pick: oklch(0.74 0.16 155);
+  --nle-reject: oklch(0.66 0.2 25);
+
+  color: var(--foreground);
+  background: var(--nle-app);
+  font-feature-settings: "cv11", "ss01", "ss03";
+}
+
+:root:has(.nle) * {
+  scrollbar-width: thin;
+  scrollbar-color: oklch(1 0 0 / 0.14) transparent;
+}
+
+:root:has(.nle) ::selection {
+  background: oklch(0.6 0.2 285 / 0.45);
+}
+
+/* Timecode / numeric readouts */
+:root:has(.nle) .tc {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums slashed-zero;
+  letter-spacing: -0.01em;
+}
+
+/* Micro section labels */
+:root:has(.nle) .eyebrow {
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+/* Film grain on placeholder frames */
+:root:has(.nle) .grain::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  /* plain alpha blend: mix-blend-mode over moving content is expensive */
+  opacity: 0.07;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .9 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+/* Static vignettes (separate layer so they never repaint) */
+:root:has(.nle) .vignette {
+  background: radial-gradient(
+    ellipse at center,
+    transparent 55%,
+    oklch(0 0 0 / 0.5) 100%
+  );
+}
+:root:has(.nle) .vignette-strong {
+  background: radial-gradient(
+    ellipse at center,
+    transparent 45%,
+    oklch(0 0 0 / 0.75) 85%
+  );
+}
+
+/* Empty-lane hatching */
+:root:has(.nle) .hatch {
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent 0 5px,
+    oklch(1 0 0 / 0.025) 5px 6px
+  );
+}
+
+/* Range input styled to match */
+:root:has(.nle) input[type="range"].nle-range {
+  appearance: none;
+  height: 16px;
+  background: transparent;
+}
+:root:has(.nle) input[type="range"].nle-range::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 99px;
+  background: oklch(1 0 0 / 0.14);
+}
+:root:has(.nle) input[type="range"].nle-range::-moz-range-track {
+  height: 3px;
+  border-radius: 99px;
+  background: oklch(1 0 0 / 0.14);
+}
+:root:has(.nle) input[type="range"].nle-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 11px;
+  height: 11px;
+  margin-top: -4px;
+  border-radius: 99px;
+  background: var(--foreground);
+  border: 0;
+}
+:root:has(.nle) input[type="range"].nle-range::-moz-range-thumb {
+  width: 11px;
+  height: 11px;
+  border-radius: 99px;
+  background: var(--foreground);
+  border: 0;
+}
+
+/* Native time input icon in dark */
+:root:has(.nle) input[type="time"]::-webkit-calendar-picker-indicator {
+  filter: invert(1) opacity(0.5);
+}

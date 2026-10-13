@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="112 104 288 304" width="288" height="304" role="img" aria-label="sscrub">
+  <defs>
+    <linearGradient id="head" x1="256" y1="120" x2="256" y2="392" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#D946EF"/>
+      <stop offset="1" stop-color="#A21CAF"/>
+    </linearGradient>
+  </defs>
+  <!-- transparent-background mark, tuned for black surfaces -->
+  <!-- clips on the timeline, split by the playhead -->
+  <rect x="128" y="282" width="99" height="52" rx="12" fill="#FFFFFF" fill-opacity=".28"/>
+  <rect x="285" y="282" width="99" height="52" rx="12" fill="#FFFFFF" fill-opacity=".14"/>
+  <!-- playhead: rounded pentagon head + stem -->
+  <path d="M204 140H308V170L256 210L204 170Z" fill="url(#head)" stroke="url(#head)" stroke-width="24" stroke-linejoin="round"/>
+  <rect x="245" y="196" width="22" height="196" rx="11" fill="url(#head)"/>
+</svg>
