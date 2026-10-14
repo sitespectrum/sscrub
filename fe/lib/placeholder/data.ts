@@ -1,39 +1,15 @@
-// Mock data for the UI mockup. Everything is deterministic (seeded RNG, UTC
-// times) so server and client renders match.
+// Placeholder data so the UI renders before it is wired to the API.
+// Deterministic (seeded RNG, fixed UTC day) so server and client renders match.
+// Only consumed through ./hooks.ts.
 
-export type AssetStatus = "Uploading" | "Processing" | "Ready" | "Failed";
-export type SinkKind = "camera" | "action" | "drone" | "phone" | "audio";
-
-export interface Sink {
-  id: string;
-  name: string;
-  model: string;
-  kind: SinkKind;
-  color: string;
-  hue: number;
-}
-
-export interface Clip {
-  id: string;
-  sinkId: string;
-  fileName: string;
-  start: number; // epoch ms (capture time)
-  duration: number; // ms
-  size: number; // bytes
-  status: AssetStatus;
-  progress?: number; // 0..1 while uploading
-  codec: string;
-  resolution: string;
-}
-
-export interface Project {
-  id: string;
-  name: string;
-  sinkIds: string[];
-  start: number;
-  end: number;
-  updated: string;
-}
+import { hash } from "../format";
+import type {
+  AssetStatus,
+  Clip,
+  Project,
+  SinkView as Sink,
+  SinkType,
+} from "../media";
 
 const SEC = 1000;
 const MIN = 60 * SEC;
@@ -104,15 +80,8 @@ function mulberry32(a: number) {
   };
 }
 
-export function hash(s: string) {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++)
-    h = Math.imul(h ^ s.charCodeAt(i), 16777619);
-  return h >>> 0;
-}
-
 const KIND_PARAMS: Record<
-  SinkKind,
+  SinkType,
   {
     clip: [number, number];
     gap: [number, number];
@@ -161,6 +130,14 @@ const KIND_PARAMS: Record<
     codec: "WAV 24-bit 48 kHz",
     res: "4 ch",
     name: (n) => `ZOOM${String(n).padStart(4, "0")}.WAV`,
+  },
+  unknown: {
+    clip: [1, 2],
+    gap: [3, 4],
+    bitrate: 6e6,
+    codec: "",
+    res: "0x0",
+    name: (n) => "xxx",
   },
 };
 
@@ -223,22 +200,6 @@ export const CLIPS: Clip[] = SINKS.flatMap(generateClips);
   set(CLIPS.filter((c) => c.sinkId === "phone").at(-2), "Failed");
 })();
 
-export const clipsBySink = (sinkId: string) =>
-  CLIPS.filter((c) => c.sinkId === sinkId);
-
-export const clipsInRange = (sinkId: string, from: number, to: number) =>
-  CLIPS.filter(
-    (c) => c.sinkId === sinkId && c.start < to && c.start + c.duration > from,
-  );
-
-export const clipAt = (clips: Clip[], t: number) =>
-  clips.find((c) => t >= c.start && t < c.start + c.duration);
-
-export const nextClip = (clips: Clip[], t: number) =>
-  clips.find((c) => c.start > t);
-
-export const sinkById = (id: string) => SINKS.find((s) => s.id === id)!;
-
 export const PROJECTS: Project[] = [
   {
     id: "ceremony",
@@ -265,51 +226,3 @@ export const PROJECTS: Project[] = [
     updated: "Oct 11",
   },
 ];
-
-export const projectById = (id: string) =>
-  PROJECTS.find((p) => p.id === id) ?? PROJECTS[0];
-
-// ---- formatting (UTC so it's stable) ----
-
-const pad = (n: number, w = 2) => String(Math.floor(n)).padStart(w, "0");
-
-export function fmtClock(ms: number, seconds = true) {
-  const d = new Date(ms);
-  const s = `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
-  return seconds ? `${s}:${pad(d.getUTCSeconds())}` : s;
-}
-
-export function fmtTC(ms: number, fps = 25) {
-  const d = new Date(ms);
-  return `${fmtClock(ms)}:${pad((d.getUTCMilliseconds() / 1000) * fps)}`;
-}
-
-export function fmtDur(ms: number) {
-  const s = Math.max(0, Math.round(ms / 1000));
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  if (h) return `${h}h ${pad(m)}m`;
-  return `${m}:${pad(s % 60)}`;
-}
-
-export function fmtSize(bytes: number) {
-  const u = ["B", "KB", "MB", "GB", "TB"];
-  let i = 0;
-  while (bytes >= 1000 && i < u.length - 1) {
-    bytes /= 1000;
-    i++;
-  }
-  return `${bytes.toFixed(bytes < 10 && i > 1 ? 1 : 0)} ${u[i]}`;
-}
-
-export function fmtDate(ms: number) {
-  return new Date(ms).toLocaleDateString("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    timeZone: "UTC",
-  });
-}
-
-export const HOUR_MS = HOUR;
-export const MIN_MS = MIN;

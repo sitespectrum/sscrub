@@ -1,8 +1,8 @@
 "use client";
 
+import { ResizableHandle } from "@/components/ui/resizable";
 import { cn } from "@/lib/utils";
 
-/** Docked panel with a tabbed title bar, NLE style. */
 export function Panel<T extends string>({
   tabs,
   active,
@@ -24,11 +24,11 @@ export function Panel<T extends string>({
   return (
     <section
       className={cn(
-        "h-full flex flex-col rounded-md border border-(--nle-hairline) bg-(--nle-panel) overflow-hidden",
+        "h-full flex flex-col rounded-md border border-hairline bg-panel overflow-hidden",
         className,
       )}
     >
-      <header className="h-8 shrink-0 flex items-stretch gap-1 pl-1 pr-1.5 border-b border-(--nle-hairline)">
+      <header className="h-8 shrink-0 flex items-stretch gap-1 pl-1 pr-1.5 border-b border-hairline">
         <div className="flex items-stretch">
           {tabs.map((tab) => (
             <button
@@ -41,7 +41,7 @@ export function Panel<T extends string>({
             >
               {tab.label}
               {current === tab.value && (
-                <span className="absolute inset-x-2 bottom-0 h-[2px] rounded-full bg-primary" />
+                <span className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-primary" />
               )}
             </button>
           ))}
@@ -75,7 +75,7 @@ export function Segmented<T extends string>({
   return (
     <div
       className={cn(
-        "inline-flex items-center gap-px rounded-md bg-(--nle-well) p-0.5 ring-1 ring-inset ring-(--nle-hairline)",
+        "inline-flex items-center gap-px rounded-md bg-well p-0.5 ring-1 ring-inset ring-hairline",
         className,
       )}
     >
@@ -88,7 +88,7 @@ export function Segmented<T extends string>({
             "h-6 inline-flex items-center gap-1.5 rounded-[5px] px-2 text-[0.7rem] font-medium text-muted-foreground transition-colors hover:text-foreground [&_svg]:size-3.5",
             !o.label && "w-6 justify-center px-0",
             value === o.value &&
-              "bg-(--nle-raised) text-foreground shadow-[0_1px_0_0_oklch(1_0_0/0.06)_inset,0_1px_2px_oklch(0_0_0/0.4)]",
+              "bg-raised text-foreground shadow-[0_1px_0_0_oklch(1_0_0/0.06)_inset,0_1px_2px_oklch(0_0_0/0.4)]",
           )}
         >
           {o.icon}
@@ -96,25 +96,6 @@ export function Segmented<T extends string>({
         </button>
       ))}
     </div>
-  );
-}
-
-export function Kbd({
-  children,
-  className,
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <kbd
-      className={cn(
-        "tc inline-flex h-4 min-w-4 items-center justify-center rounded-[4px] border border-(--nle-hairline) bg-white/[0.04] px-1 text-[0.6rem] font-medium text-muted-foreground",
-        className,
-      )}
-    >
-      {children}
-    </kbd>
   );
 }
 
@@ -137,7 +118,7 @@ export function TrackToggle({
       title={title}
       onClick={onClick}
       className={cn(
-        "size-5 rounded-[4px] inline-flex items-center justify-center text-muted-foreground/70 hover:text-foreground hover:bg-white/[0.06] [&_svg]:size-3",
+        "size-5 rounded-lg inline-flex items-center justify-center text-muted-foreground/70 hover:text-foreground hover:bg-white/6 [&_svg]:size-3",
         on && activeClass,
       )}
     >
@@ -165,5 +146,18 @@ export function Stat({
       <span className="text-muted-foreground">{label}</span>
       <span className="tc text-foreground/90 truncate">{value}</span>
     </div>
+  );
+}
+
+/** Transparent resize handle that leaves a gap between floating panels. */
+export function Gutter({ group }: { group: "horizontal" | "vertical" }) {
+  return (
+    <ResizableHandle
+      className={
+        group === "horizontal"
+          ? "w-1! bg-transparent! hover:bg-primary/40! transition-colors rounded-full"
+          : "h-1! bg-transparent! hover:bg-primary/40! transition-colors rounded-full"
+      }
+    />
   );
 }

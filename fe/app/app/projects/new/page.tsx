@@ -1,8 +1,21 @@
 "use client";
 
+import { Coverage } from "@/app/app/_components/coverage";
+import { AppHeader } from "@/app/app/_components/header";
+import { Stat } from "@/app/app/_components/panel";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  HOUR_MS,
+  MIN_MS,
+  fmtClock,
+  fmtDate,
+  fmtDur,
+  fmtSize,
+} from "@/lib/format";
+import { clipsInRange, groupBySink, hourBounds } from "@/lib/media";
+import { useClips, useSinks } from "@/lib/placeholder/hooks";
 import { cn } from "@/lib/utils";
 import {
   CalendarIcon,
@@ -15,36 +28,30 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { Coverage } from "../../_components/coverage";
-import { SinkBadge } from "../../_components/frame";
-import { MockHeader } from "../../_components/header";
-import { Stat } from "../../_components/ui";
-import {
-  SINKS,
-  at,
-  clipsInRange,
-  fmtClock,
-  fmtDate,
-  fmtDur,
-  fmtSize,
-} from "../../_lib/data";
 
-const DAY_FROM = at(8);
-const DAY_TO = at(21);
-
+const DAY_MS = 24 * HOUR_MS;
 const toInput = (t: number) => fmtClock(t, false);
-const fromInput = (v: string) => {
-  const [h, m] = v.split(":").map(Number);
-  return at(h || 0, m || 0);
-};
 
-export default function NewProjectMockup() {
+export default function NewProjectPage() {
   const router = useRouter();
-  const [name, setName] = useState("Riverside — Ceremony");
+  const { data: sinks } = useSinks();
+  const { data: clips } = useClips();
+  const clipsBySink = useMemo(() => groupBySink(clips ?? []), [clips]);
+
+  // Chart spans the hours that have footage on the shoot day.
+  // TODO: the "Shoot date" picker should choose which day's footage to show.
+  const [DAY_FROM, DAY_TO] = useMemo(() => hourBounds(clips ?? []), [clips]);
+  const midnight = Math.floor(DAY_FROM / DAY_MS) * DAY_MS;
+  const fromInput = (v: string) => {
+    const [h, m] = v.split(":").map(Number);
+    return midnight + (h || 0) * HOUR_MS + (m || 0) * MIN_MS;
+  };
+
+  const [name, setName] = useState("");
   const [selected, setSelected] = useState(
-    new Set(["a-cam", "b-cam", "drone", "audio"]),
+    () => new Set(sinks?.map((s) => s.id)),
   );
-  const [range, setRange] = useState({ start: at(13, 30), end: at(16, 30) });
+  const [range, setRange] = useState(() => ({ start: DAY_FROM, end: DAY_TO }));
 
   const toggle = (id: string) =>
     setSelected((s) => {
@@ -56,17 +63,19 @@ export default function NewProjectMockup() {
 
   const included = useMemo(
     () =>
-      [...selected].flatMap((id) => clipsInRange(id, range.start, range.end)),
-    [selected, range],
+      [...selected].flatMap((id) =>
+        clipsInRange(clipsBySink[id] ?? [], range.start, range.end),
+      ),
+    [selected, range, clipsBySink],
   );
   const dimmed = useMemo(
-    () => new Set(SINKS.filter((s) => !selected.has(s.id)).map((s) => s.id)),
-    [selected],
+    () => new Set(sinks?.filter((s) => !selected.has(s.id)).map((s) => s.id)),
+    [selected, sinks],
   );
 
   const snapToFootage = () => {
     const cs = [...selected].flatMap((id) =>
-      clipsInRange(id, DAY_FROM, DAY_TO),
+      clipsInRange(clipsBySink[id] ?? [], DAY_FROM, DAY_TO),
     );
     if (!cs.length) return;
     setRange({
@@ -76,12 +85,12 @@ export default function NewProjectMockup() {
   };
 
   return (
-    <div className="h-dvh flex flex-col overflow-hidden">
-      <MockHeader active="projects" />
+    <div className="flex-1 min-h-0 flex flex-col">
+      <AppHeader active="projects" />
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-6xl mx-auto px-6 py-8">
           <nav className="flex items-center gap-1.5 text-xs text-muted-foreground mb-2">
-            <Link href="/mockup/projects" className="hover:text-foreground">
+            <Link href="/app/projects" className="hover:text-foreground">
               Projects
             </Link>
             <ChevronRightIcon className="size-3" />
@@ -92,7 +101,7 @@ export default function NewProjectMockup() {
           </h1>
 
           <div className="grid gap-5 lg:grid-cols-[1fr_300px] items-start">
-            <div className="rounded-lg bg-(--nle-panel) ring-1 ring-(--nle-hairline) divide-y divide-(--nle-hairline)">
+            <div className="rounded-lg bg-panel ring-1 ring-hairline divide-y divide-hairline">
               <Section title="Details">
                 <div className="grid sm:grid-cols-[1fr_auto] gap-4">
                   <div className="flex flex-col gap-1.5">
@@ -167,9 +176,10 @@ export default function NewProjectMockup() {
                   </Button>
                 </div>
 
-                <div className="rounded-md bg-(--nle-well) ring-1 ring-inset ring-(--nle-hairline) px-3 pt-8 pb-3">
+                <div className="rounded-md bg-well ring-1 ring-inset ring-hairline px-3 pt-8 pb-3">
                   <Coverage
-                    sinks={SINKS}
+                    sinks={sinks ?? []}
+                    clips={clipsBySink}
                     dimmed={dimmed}
                     from={DAY_FROM}
                     to={DAY_TO}
@@ -182,7 +192,7 @@ export default function NewProjectMockup() {
                     label={(s) => {
                       const on = selected.has(s.id);
                       const n = clipsInRange(
-                        s.id,
+                        clipsBySink[s.id] ?? [],
                         range.start,
                         range.end,
                       ).length;
@@ -190,13 +200,13 @@ export default function NewProjectMockup() {
                         <button
                           onClick={() => toggle(s.id)}
                           className={cn(
-                            "w-full h-full flex items-center gap-2.5 rounded-md px-1.5 text-left transition-colors hover:bg-white/[0.04]",
+                            "w-full h-full flex items-center gap-2.5 rounded-md px-1.5 text-left transition-colors hover:bg-white/4",
                             !on && "opacity-50 hover:opacity-80",
                           )}
                         >
                           <span
                             className={cn(
-                              "size-3.5 rounded-[4px] ring-1 ring-inset flex items-center justify-center shrink-0 transition-colors",
+                              "size-3.5 rounded-lg ring-1 ring-inset flex items-center justify-center shrink-0 transition-colors",
                               on
                                 ? "bg-primary ring-primary text-primary-foreground"
                                 : "ring-white/25",
@@ -206,7 +216,7 @@ export default function NewProjectMockup() {
                               <CheckIcon className="size-2.5" strokeWidth={3} />
                             )}
                           </span>
-                          <SinkBadge sink={s} size="sm" />
+                          {/* <SinkBadge sink={s} size="sm" /> */}
                           <span className="flex-1 min-w-0">
                             <span className="block text-xs font-medium truncate">
                               {s.name}
@@ -228,8 +238,8 @@ export default function NewProjectMockup() {
               </Section>
             </div>
 
-            <aside className="lg:sticky lg:top-0 rounded-lg bg-(--nle-panel) ring-1 ring-(--nle-hairline) overflow-hidden">
-              <div className="p-4 border-b border-(--nle-hairline)">
+            <aside className="lg:sticky lg:top-0 rounded-lg bg-panel ring-1 ring-hairline overflow-hidden">
+              <div className="p-4 border-b border-hairline">
                 <div className="eyebrow mb-2">Summary</div>
                 <div className="text-sm font-semibold tracking-tight truncate">
                   {name || "Untitled project"}
@@ -253,22 +263,30 @@ export default function NewProjectMockup() {
                 />
               </div>
               <div className="px-4 pb-4 flex flex-col gap-1">
-                {SINKS.filter((s) => selected.has(s.id)).map((s, i) => (
-                  <div key={s.id} className="flex items-center gap-2 text-xs">
-                    <span className="tc w-6 text-[0.6rem] text-muted-foreground">
-                      {s.kind === "audio" ? "A" : "V"}
-                      {i + 1}
-                    </span>
-                    <span
-                      className="size-2 rounded-[2px]"
-                      style={{ background: s.color }}
-                    />
-                    <span className="flex-1 truncate">{s.name}</span>
-                    <span className="tc text-[0.65rem] text-muted-foreground">
-                      {clipsInRange(s.id, range.start, range.end).length}
-                    </span>
-                  </div>
-                ))}
+                {sinks
+                  ?.filter((s) => selected.has(s.id))
+                  .map((s, i) => (
+                    <div key={s.id} className="flex items-center gap-2 text-xs">
+                      <span className="tc w-6 text-[0.6rem] text-muted-foreground">
+                        {s.kind === "audio" ? "A" : "V"}
+                        {i + 1}
+                      </span>
+                      <span
+                        className="size-2 rounded-xs"
+                        style={{ background: s.color }}
+                      />
+                      <span className="flex-1 truncate">{s.name}</span>
+                      <span className="tc text-[0.65rem] text-muted-foreground">
+                        {
+                          clipsInRange(
+                            clipsBySink[s.id] ?? [],
+                            range.start,
+                            range.end,
+                          ).length
+                        }
+                      </span>
+                    </div>
+                  ))}
               </div>
               {included.some((c) => c.status !== "Ready") && (
                 <div className="mx-4 mb-4 rounded-md bg-amber-500/10 ring-1 ring-inset ring-amber-500/20 px-2.5 py-2 text-[0.65rem] text-amber-300">
@@ -280,12 +298,13 @@ export default function NewProjectMockup() {
                   size="lg"
                   className="w-full"
                   disabled={!selected.size}
-                  onClick={() => router.push("/mockup/projects/ceremony")}
+                  // TODO(data): create the project, then open it by its new id
+                  onClick={() => router.push("/app/projects/ceremony")}
                 >
                   Create & open editor
                 </Button>
                 <Link
-                  href="/mockup/projects"
+                  href="/app/projects"
                   className={buttonVariants({
                     variant: "ghost",
                     className: "w-full",

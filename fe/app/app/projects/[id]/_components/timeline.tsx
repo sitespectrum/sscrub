@@ -1,5 +1,8 @@
 "use client";
 
+import { TrackToggle } from "@/app/app/_components/panel";
+import { fmtClock, fmtTC, hash } from "@/lib/format";
+import { type Clip, type SinkView } from "@/lib/media";
 import { cn } from "@/lib/utils";
 import {
   CheckIcon,
@@ -18,9 +21,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { Frame } from "../../_components/frame";
-import { TrackToggle } from "../../_components/ui";
-import { type Clip, type Sink, fmtClock, fmtTC, hash } from "../../_lib/data";
 import type { Flag, Track } from "./monitor";
 
 export interface Marker {
@@ -34,7 +34,7 @@ export type ClipFilter = "all" | "unreviewed" | "pick" | "reject";
 
 const HEADER_W = 216;
 const RULER_H = 30;
-const rowHeight = (s: Sink) => (s.kind === "audio" ? 48 : 68);
+const rowHeight = (s: SinkView) => (s.kind === "audio" ? 48 : 68);
 
 const TICKS = [1, 5, 10, 30, 60, 300, 600, 900, 1800, 3600].map(
   (s) => s * 1000,
@@ -149,7 +149,7 @@ export function Timeline({
     <div
       ref={scroller}
       onScroll={onScroll}
-      className="flex-1 min-h-0 overflow-auto relative select-none bg-(--nle-well)"
+      className="flex-1 min-h-0 overflow-auto relative select-none bg-well"
     >
       <div
         className="relative min-h-full"
@@ -157,14 +157,14 @@ export function Timeline({
       >
         {/* Ruler */}
         <div
-          className="sticky top-0 z-30 flex bg-(--nle-panel) border-b border-(--nle-hairline)"
+          className="sticky top-0 z-30 flex bg-panel border-b border-hairline"
           style={{ height: RULER_H }}
         >
           <div
-            className="sticky left-0 z-10 shrink-0 bg-(--nle-panel) border-r border-(--nle-hairline) flex items-center px-3"
+            className="sticky left-0 z-10 shrink-0 bg-panel border-r border-hairline flex items-center px-3"
             style={{ width: HEADER_W }}
           >
-            <span className="tc text-[0.8rem] font-medium text-(--nle-playhead)">
+            <span className="tc text-[0.8rem] font-medium text-playhead">
               {fmtTC(t)}
             </span>
           </div>
@@ -206,10 +206,7 @@ export function Timeline({
 
         {/* Tracks */}
         {tracks.map((tr) => (
-          <div
-            key={tr.sink.id}
-            className="flex border-b border-(--nle-hairline)"
-          >
+          <div key={tr.sink.id} className="flex border-b border-hairline">
             <TrackHeader
               track={tr}
               soloed={solo === tr.sink.id}
@@ -234,7 +231,7 @@ export function Timeline({
         ))}
         <div className="flex" style={{ minHeight: 48 }}>
           <div
-            className="sticky left-0 shrink-0 bg-(--nle-panel) border-r border-(--nle-hairline)"
+            className="sticky left-0 shrink-0 bg-panel border-r border-hairline"
             style={{ width: HEADER_W }}
           />
         </div>
@@ -259,12 +256,12 @@ export function Timeline({
           style={{ left: HEADER_W, transform: `translate3d(${x}px, 0, 0)` }}
         >
           <div
-            className="absolute top-0 -translate-x-1/2 w-[11px] h-[18px] bg-(--nle-playhead)"
+            className="absolute top-0 -translate-x-1/2 w-2.75 h-4.5 bg-playhead"
             style={{
               clipPath: "polygon(0 0, 100% 0, 100% 62%, 50% 100%, 0 62%)",
             }}
           />
-          <div className="absolute top-0 bottom-0 w-px -translate-x-1/2 bg-(--nle-playhead) shadow-[0_0_6px_oklch(0.8_0.13_210/0.6)]" />
+          <div className="absolute top-0 bottom-0 w-px -translate-x-1/2 bg-playhead shadow-[0_0_6px_color-mix(in_oklch,var(--playhead)_60%,transparent)]" />
         </div>
       </div>
     </div>
@@ -340,22 +337,18 @@ function TrackHeader({
   return (
     <div
       className={cn(
-        "sticky left-0 z-10 shrink-0 flex items-center gap-2.5 pr-2 bg-(--nle-panel) border-r border-(--nle-hairline)",
-        soloed &&
-          "bg-[color-mix(in_oklch,var(--nle-panel),var(--primary)_10%)]",
+        "sticky left-0 z-10 shrink-0 flex items-center gap-2.5 pr-2 bg-panel border-r border-hairline",
+        soloed && "bg-[color-mix(in_oklch,var(--panel),var(--primary)_10%)]",
       )}
       style={{ width: HEADER_W, height: rowHeight(sink) }}
     >
-      <div
-        className="w-[3px] self-stretch"
-        style={{ background: sink.color }}
-      />
+      <div className="w-0.75 self-stretch" style={{ background: sink.color }} />
       <span
         className={cn(
-          "tc w-7 h-5 rounded-[4px] inline-flex items-center justify-center text-[0.6rem] font-semibold ring-1 ring-inset",
+          "tc w-7 h-5 rounded-lg inline-flex items-center justify-center text-[0.6rem] font-semibold ring-1 ring-inset",
           soloed
             ? "bg-primary text-primary-foreground ring-primary"
-            : "bg-white/[0.04] text-muted-foreground ring-(--nle-hairline)",
+            : "bg-white/4 text-muted-foreground ring-hairline",
         )}
       >
         {sink.kind === "audio" ? "A" : "V"}
@@ -427,7 +420,7 @@ const Lane = memo(function Lane({
   const px = (ms: number) => (ms / span) * laneW;
   return (
     <div
-      className={cn("relative hatch", soloed && "bg-primary/[0.04]")}
+      className={cn("relative hatch", soloed && "bg-primary/4")}
       style={{ width: laneW, height: h }}
       onPointerDown={(e) => onPointerDown(e)}
     >
@@ -446,14 +439,14 @@ const Lane = memo(function Lane({
               onPointerDown(e, c);
             }}
             className={cn(
-              "absolute top-[3px] bottom-[3px] rounded-[3px] overflow-hidden cursor-pointer flex flex-col transition-opacity",
+              "absolute top-0.75 bottom-0.75 rounded-[3px] overflow-hidden cursor-pointer flex flex-col transition-opacity",
               !matches(filter, flag) && "opacity-20",
               flag === "reject" &&
                 matches(filter, flag) &&
                 filter !== "reject" &&
                 "opacity-45",
               selected
-                ? "z-[1] outline-2 outline-white -outline-offset-1"
+                ? "z-1 outline-2 outline-white -outline-offset-1"
                 : "hover:brightness-[1.15]",
             )}
             style={{
@@ -467,7 +460,7 @@ const Lane = memo(function Lane({
           >
             {/* title bar */}
             <div
-              className="h-[15px] shrink-0 flex items-center gap-1 px-1.5 text-[0.6rem] font-medium text-white/90"
+              className="h-3.75 shrink-0 flex items-center gap-1 px-1.5 text-[0.6rem] font-medium text-white/90"
               style={{
                 background: `color-mix(in oklch, ${sink.color} 70%, oklch(0.2 0 0))`,
               }}
@@ -504,10 +497,10 @@ const Lane = memo(function Lane({
               )}
             </div>
             {flag === "pick" && (
-              <div className="absolute bottom-0 inset-x-0 h-[2px] bg-(--nle-pick)" />
+              <div className="absolute bottom-0 inset-x-0 h-0.5 bg-pick" />
             )}
             {flag === "reject" && (
-              <div className="absolute bottom-0 inset-x-0 h-[2px] bg-(--nle-reject)" />
+              <div className="absolute bottom-0 inset-x-0 h-0.5 bg-reject" />
             )}
           </div>
         );
@@ -523,7 +516,7 @@ const Thumbs = memo(function Thumbs({
   width,
   height,
 }: {
-  sink: Sink;
+  sink: SinkView;
   clip: Clip;
   width: number;
   height: number;
@@ -544,7 +537,7 @@ const Thumbs = memo(function Thumbs({
           )}
           style={{ width: tw }}
         >
-          <Frame
+          {/* <Frame
             sink={sink}
             clip={clip}
             t={
@@ -555,7 +548,7 @@ const Thumbs = memo(function Thumbs({
             grain={false}
             thumb
             className="size-full"
-          />
+          /> */}
         </div>
       ))}
     </div>

@@ -1,7 +1,28 @@
 "use client";
 
+import { Meters } from "@/app/app/_components/frame";
+import { AppHeader } from "@/app/app/_components/header";
+import { Gutter, Panel, Segmented, Stat } from "@/app/app/_components/panel";
 import { Button } from "@/components/ui/button";
+import { Kbd } from "@/components/ui/kbd";
 import { ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+import {
+  MIN_MS,
+  fmtClock,
+  fmtDate,
+  fmtDur,
+  fmtSize,
+  fmtTC,
+  hash,
+} from "@/lib/format";
+import {
+  type Clip,
+  type Project,
+  type SinkView,
+  clipAt,
+  clipsInRange,
+  groupBySink,
+} from "@/lib/media";
 import { cn } from "@/lib/utils";
 import {
   BookmarkPlusIcon,
@@ -33,42 +54,36 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Frame, Meters, SinkBadge } from "../../_components/frame";
-import { Gutter } from "../../_components/gutter";
-import { MockHeader } from "../../_components/header";
-import { Kbd, Panel, Segmented, Stat } from "../../_components/ui";
-import {
-  type Clip,
-  MIN_MS,
-  clipAt,
-  clipsInRange,
-  fmtClock,
-  fmtDate,
-  fmtDur,
-  fmtSize,
-  fmtTC,
-  hash,
-  projectById,
-  sinkById,
-} from "../../_lib/data";
 import { type Flag, Monitor, type Track } from "./monitor";
 import { type ClipFilter, type Marker, Timeline } from "./timeline";
 
 const MARKER_COLORS = ["#ef4444", "#f59e0b", "#22c55e", "#3b82f6", "#a855f7"];
 
-export function Editor({ projectId }: { projectId: string }) {
-  const project = projectById(projectId);
+/**
+ * Multicam culling editor. Expects loaded data; remount (via `key`) when the
+ * project changes, since playhead/flags/markers are initialized from it.
+ */
+export function Editor({
+  project,
+  sinks,
+  clips,
+}: {
+  project: Project;
+  sinks: SinkView[];
+  clips: Clip[];
+}) {
   const { start: from, end: to } = project;
 
-  const tracks: Track[] = useMemo(
-    () =>
-      project.sinkIds.map((id, index) => ({
-        sink: sinkById(id),
-        clips: clipsInRange(id, from, to),
+  const tracks: Track[] = useMemo(() => {
+    const bySink = groupBySink(clips);
+    return project.sinkIds
+      .flatMap((id) => sinks.find((s) => s.id === id) ?? [])
+      .map((sink, index) => ({
+        sink,
+        clips: clipsInRange(bySink[sink.id] ?? [], from, to),
         index,
-      })),
-    [project, from, to],
-  );
+      }));
+  }, [project, sinks, clips, from, to]);
 
   const editPoints = useMemo(
     () =>
@@ -250,8 +265,8 @@ export function Editor({ projectId }: { projectId: string }) {
   const audioClip = audio && clipAt(audio.clips, t);
 
   return (
-    <div className="h-dvh flex flex-col overflow-hidden">
-      <MockHeader
+    <div className="flex-1 min-h-0 flex flex-col">
+      <AppHeader
         actions={
           <div className="flex items-center gap-1 mr-1">
             <Button variant="ghost" size="icon-sm" title="Undo">
@@ -260,7 +275,7 @@ export function Editor({ projectId }: { projectId: string }) {
             <Button variant="ghost" size="icon-sm" title="Redo">
               <Redo2Icon />
             </Button>
-            <span className="h-4 w-px bg-(--nle-hairline) mx-1" />
+            <span className="h-4 w-px bg-hairline mx-1" />
             <Button variant="ghost">
               <Share2Icon data-icon="inline-start" /> Share
             </Button>
@@ -275,7 +290,7 @@ export function Editor({ projectId }: { projectId: string }) {
       >
         <nav className="flex items-center gap-1.5 text-xs">
           <Link
-            href="/mockup/projects"
+            href="/app/projects"
             className="text-muted-foreground hover:text-foreground"
           >
             Projects
@@ -286,7 +301,7 @@ export function Editor({ projectId }: { projectId: string }) {
             {fmtDate(from)} · {fmtClock(from, false)}–{fmtClock(to, false)}
           </span>
         </nav>
-      </MockHeader>
+      </AppHeader>
 
       <ResizablePanelGroup
         orientation="vertical"
@@ -352,10 +367,10 @@ export function Editor({ projectId }: { projectId: string }) {
                         <button
                           key={m.id}
                           onClick={() => seek(m.t)}
-                          className="flex items-center gap-2.5 rounded-md px-2 h-8 text-xs text-left transition-colors hover:bg-white/[0.04]"
+                          className="flex items-center gap-2.5 rounded-md px-2 h-8 text-xs text-left transition-colors hover:bg-white/4"
                         >
                           <span
-                            className="w-[3px] h-4 rounded-full"
+                            className="w-0.75 h-4 rounded-full"
                             style={{ background: m.color }}
                           />
                           <span className="flex-1 truncate">{m.label}</span>
@@ -454,6 +469,10 @@ export function Editor({ projectId }: { projectId: string }) {
                   {focusClip ? (
                     <Inspector
                       clip={focusClip}
+                      sink={
+                        tracks.find((tr) => tr.sink.id === focusClip.sinkId)!
+                          .sink
+                      }
                       t={t}
                       flag={flags[focusClip.id]}
                       onFlag={flag}
@@ -461,7 +480,7 @@ export function Editor({ projectId }: { projectId: string }) {
                     />
                   ) : (
                     <div className="h-full flex flex-col items-center justify-center gap-3 px-6 text-center">
-                      <span className="size-10 rounded-full bg-white/[0.04] ring-1 ring-inset ring-(--nle-hairline) flex items-center justify-center text-muted-foreground">
+                      <span className="size-10 rounded-full bg-white/4 ring-1 ring-inset ring-hairline flex items-center justify-center text-muted-foreground">
                         <MousePointerClickIcon className="size-4" />
                       </span>
                       <div>
@@ -517,7 +536,7 @@ export function Editor({ projectId }: { projectId: string }) {
                       { value: "reject", label: "Rejects" },
                     ]}
                   />
-                  <span className="h-4 w-px bg-(--nle-hairline)" />
+                  <span className="h-4 w-px bg-hairline" />
                   <Button
                     size="icon-sm"
                     variant="ghost"
@@ -541,7 +560,7 @@ export function Editor({ projectId }: { projectId: string }) {
                     step={0.001}
                     value={Math.log(zoom) / Math.log(64)}
                     onChange={(e) => setZoom(Math.pow(64, +e.target.value))}
-                    className="nle-range w-24"
+                    className="range-slim w-24"
                     title="Zoom"
                   />
                   <Button
@@ -582,8 +601,8 @@ export function Editor({ projectId }: { projectId: string }) {
                 onToggleHidden={toggleHidden}
               />
             </Panel>
-            <section className="w-14 shrink-0 flex flex-col rounded-md border border-(--nle-hairline) bg-(--nle-panel) overflow-hidden">
-              <div className="h-8 shrink-0 flex items-center justify-center border-b border-(--nle-hairline) text-[0.65rem] text-muted-foreground">
+            <section className="w-14 shrink-0 flex flex-col rounded-md border border-hairline bg-panel overflow-hidden">
+              <div className="h-8 shrink-0 flex items-center justify-center border-b border-hairline text-[0.65rem] text-muted-foreground">
                 dB
               </div>
               <div className="flex-1 min-h-0 flex py-2 pl-1">
@@ -601,7 +620,7 @@ export function Editor({ projectId }: { projectId: string }) {
                   }
                 />
               </div>
-              <div className="h-5 shrink-0 flex justify-center gap-2 text-[0.55rem] text-muted-foreground border-t border-(--nle-hairline) items-center">
+              <div className="h-5 shrink-0 flex justify-center gap-2 text-[0.55rem] text-muted-foreground border-t border-hairline items-center">
                 <span>L</span>
                 <span>R</span>
               </div>
@@ -656,16 +675,16 @@ function SinkRow({
     <div
       onClick={onClick}
       className={cn(
-        "group flex items-center gap-2.5 rounded-md px-2 py-2 cursor-pointer transition-colors hover:bg-white/[0.04]",
+        "group flex items-center gap-2.5 rounded-md px-2 py-2 cursor-pointer transition-colors hover:bg-white/4",
         active && "bg-white/[0.07] hover:bg-white/[0.07]",
         hidden && "opacity-50",
       )}
     >
       <span className="relative">
-        <SinkBadge sink={track.sink} />
+        {/* <SinkBadge sink={track.sink } /> */}
         {live && (
           <span
-            className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-(--nle-reject) ring-2 ring-(--nle-panel)"
+            className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-reject ring-2 ring-panel"
             title="Recording at playhead"
           />
         )}
@@ -677,7 +696,7 @@ function SinkRow({
           </span>
         </span>
         <span className="mt-1 flex items-center gap-1.5">
-          <span className="flex-1 h-[3px] rounded-full bg-white/[0.06] overflow-hidden">
+          <span className="flex-1 h-0.75 rounded-full bg-white/6 overflow-hidden">
             <span
               className="block h-full rounded-full"
               style={{ width: `${pct * 100}%`, background: track.sink.color }}
@@ -742,16 +761,16 @@ function ScrubBar({
   };
   const p = (t - from) / span;
   return (
-    <div className="shrink-0 px-3 pt-2 bg-(--nle-panel)">
+    <div className="shrink-0 px-3 pt-2 bg-panel">
       <div
         className="relative h-5 cursor-pointer select-none"
         onPointerDown={down}
       >
-        <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-1 rounded-full bg-white/[0.06] overflow-hidden">
+        <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-1 rounded-full bg-white/6 overflow-hidden">
           <ScrubCoverage tracks={tracks} from={from} to={to} />
           {/* moving parts use transforms only: no layout, no repaint */}
           <div
-            className="absolute inset-0 origin-left bg-(--nle-playhead)/50 will-change-transform"
+            className="absolute inset-0 origin-left bg-playhead/50 will-change-transform"
             style={{ transform: `scaleX(${p})` }}
           />
         </div>
@@ -760,7 +779,7 @@ function ScrubBar({
           className="absolute inset-0 pointer-events-none will-change-transform"
           style={{ transform: `translateX(${p * 100}%)` }}
         >
-          <span className="absolute top-1/2 left-0 size-3 -translate-1/2 rounded-full bg-white shadow-[0_0_0_3px_oklch(0.8_0.13_210/0.35)]" />
+          <span className="absolute top-1/2 left-0 size-3 -translate-1/2 rounded-full bg-white shadow-[0_0_0_3px_color-mix(in_oklch,var(--playhead)_35%,transparent)]" />
         </div>
       </div>
     </div>
@@ -782,7 +801,7 @@ const ScrubCoverage = memo(function ScrubCoverage({
     tr.clips.map((c) => (
       <div
         key={c.id}
-        className="absolute inset-y-0 bg-white/[0.09]"
+        className="absolute inset-y-0 bg-white/9"
         style={{
           left: pct(Math.max(from, c.start)),
           width: pct(
@@ -807,7 +826,7 @@ const ScrubMarkers = memo(function ScrubMarkers({
   return markers.map((m) => (
     <span
       key={m.id}
-      className="absolute top-0 h-1.5 w-[3px] -translate-x-1/2 rounded-full"
+      className="absolute top-0 h-1.5 w-0.75 -translate-x-1/2 rounded-full"
       style={{ left: pct(m.t), background: m.color }}
     />
   ));
@@ -838,9 +857,9 @@ function Transport({
 }) {
   const btn = "text-muted-foreground hover:text-foreground";
   return (
-    <div className="h-12 shrink-0 grid grid-cols-[1fr_auto_1fr] items-center gap-3 px-3 bg-(--nle-panel)">
+    <div className="h-12 shrink-0 grid grid-cols-[1fr_auto_1fr] items-center gap-3 px-3 bg-panel">
       <div className="flex items-baseline gap-2 min-w-0">
-        <span className="tc text-[0.95rem] font-medium text-(--nle-playhead)">
+        <span className="tc text-[0.95rem] font-medium text-playhead">
           {fmtTC(t)}
         </span>
         {playing && rate !== 1 && (
@@ -859,7 +878,7 @@ function Transport({
         >
           <BookmarkPlusIcon />
         </Button>
-        <span className="h-4 w-px bg-(--nle-hairline) mx-1" />
+        <span className="h-4 w-px bg-hairline mx-1" />
         <Button
           size="icon"
           variant="ghost"
@@ -925,7 +944,7 @@ function Transport({
         >
           <SkipForwardIcon />
         </Button>
-        <span className="h-4 w-px bg-(--nle-hairline) mx-1" />
+        <span className="h-4 w-px bg-hairline mx-1" />
         <Button size="icon" variant="ghost" className={btn} title="Loop">
           <RotateCcwIcon />
         </Button>
@@ -935,7 +954,7 @@ function Transport({
           <span className="text-foreground/80">{fmtDur(t - from)}</span> /{" "}
           {fmtDur(to - from)}
         </span>
-        <span className="tc rounded-[4px] px-1.5 py-0.5 ring-1 ring-inset ring-(--nle-hairline)">
+        <span className="tc rounded-lg px-1.5 py-0.5 ring-1 ring-inset ring-hairline">
           Proxy ½
         </span>
       </div>
@@ -945,40 +964,41 @@ function Transport({
 
 function Inspector({
   clip,
+  sink,
   t,
   flag,
   onFlag,
   onSeek,
 }: {
   clip: Clip;
+  sink: SinkView;
   t: number;
   flag?: Flag;
   onFlag: (f: Flag | null) => void;
   onSeek: (t: number) => void;
 }) {
-  const sink = sinkById(clip.sinkId);
   const inClip = t >= clip.start && t < clip.start + clip.duration;
   const pos = inClip ? (t - clip.start) / clip.duration : 0;
   return (
     <div className="p-3 flex flex-col gap-4">
-      <div className="relative rounded-[3px] overflow-hidden ring-1 ring-white/[0.08]">
-        <Frame
+      <div className="relative rounded-[3px] overflow-hidden ring-1 ring-white/8">
+        {/* <Frame
           sink={sink}
           clip={clip}
           t={inClip ? t : clip.start + clip.duration / 2}
           live
           className="aspect-video"
-        />
-        <div className="absolute bottom-0 inset-x-0 h-[3px] bg-black/50">
+        /> */}
+        <div className="absolute bottom-0 inset-x-0 h-0.75 bg-black/50">
           <div
-            className="h-full bg-(--nle-playhead)"
+            className="h-full bg-playhead"
             style={{ width: `${pos * 100}%` }}
           />
         </div>
       </div>
 
       <div className="flex items-start gap-2.5">
-        <SinkBadge sink={sink} />
+        {/* <SinkBadge sink={sink} /> */}
         <div className="min-w-0 flex-1">
           <div className="tc text-[0.8rem] font-medium truncate">
             {clip.fileName}
@@ -995,8 +1015,8 @@ function Inspector({
           className={cn(
             "h-8 rounded-md inline-flex items-center gap-1.5 px-2.5 text-xs font-medium ring-1 ring-inset transition-colors",
             flag === "pick"
-              ? "bg-(--nle-pick)/15 text-(--nle-pick) ring-(--nle-pick)/40"
-              : "ring-(--nle-hairline) text-muted-foreground hover:text-foreground hover:bg-white/[0.04]",
+              ? "bg-pick/15 text-pick ring-pick/40"
+              : "ring-hairline text-muted-foreground hover:text-foreground hover:bg-white/4",
           )}
         >
           <CheckIcon className="size-3.5" strokeWidth={2.5} /> Pick{" "}
@@ -1007,8 +1027,8 @@ function Inspector({
           className={cn(
             "h-8 rounded-md inline-flex items-center gap-1.5 px-2.5 text-xs font-medium ring-1 ring-inset transition-colors",
             flag === "reject"
-              ? "bg-(--nle-reject)/15 text-(--nle-reject) ring-(--nle-reject)/40"
-              : "ring-(--nle-hairline) text-muted-foreground hover:text-foreground hover:bg-white/[0.04]",
+              ? "bg-reject/15 text-reject ring-reject/40"
+              : "ring-hairline text-muted-foreground hover:text-foreground hover:bg-white/4",
           )}
         >
           <XIcon className="size-3.5" strokeWidth={2.5} /> Reject{" "}
@@ -1043,7 +1063,7 @@ function Inspector({
                 className={cn(
                   "size-1.5",
                   clip.status === "Ready"
-                    ? "fill-(--nle-pick) text-(--nle-pick)"
+                    ? "fill-pick text-pick"
                     : "fill-amber-400 text-amber-400",
                 )}
               />
@@ -1066,7 +1086,7 @@ function CullSummary({
   total: number;
 }) {
   return (
-    <div className="shrink-0 p-3 flex flex-col gap-2.5 border-t border-(--nle-hairline)">
+    <div className="shrink-0 p-3 flex flex-col gap-2.5 border-t border-hairline">
       <div className="flex items-baseline justify-between">
         <span className="eyebrow">Culling</span>
         <span className="tc text-[0.7rem] text-muted-foreground">
@@ -1076,19 +1096,19 @@ function CullSummary({
           reviewed
         </span>
       </div>
-      <div className="flex h-1.5 rounded-full overflow-hidden bg-white/[0.06] gap-px">
+      <div className="flex h-1.5 rounded-full overflow-hidden bg-white/6 gap-px">
         <div
-          className="bg-(--nle-pick)"
+          className="bg-pick"
           style={{ width: `${(picks / total) * 100}%` }}
         />
         <div
-          className="bg-(--nle-reject)"
+          className="bg-reject"
           style={{ width: `${(rejects / total) * 100}%` }}
         />
       </div>
       <div className="grid grid-cols-3 text-[0.65rem]">
-        <Legend color="var(--nle-pick)" label="Picks" value={picks} />
-        <Legend color="var(--nle-reject)" label="Rejects" value={rejects} />
+        <Legend color="var(--pick)" label="Picks" value={picks} />
+        <Legend color="var(--reject)" label="Rejects" value={rejects} />
         <Legend
           color="oklch(1 0 0 / 0.2)"
           label="Left"
@@ -1130,12 +1150,12 @@ function StatusBar({ playing }: { playing: boolean }) {
     ["M", "Marker"],
   ];
   return (
-    <footer className="h-6 shrink-0 px-3 flex items-center gap-4 text-[0.65rem] text-muted-foreground bg-(--nle-app) border-t border-(--nle-hairline)">
+    <footer className="h-6 shrink-0 px-3 flex items-center gap-4 text-[0.65rem] text-muted-foreground bg-app border-t border-hairline">
       <span className="flex items-center gap-1.5">
         <span
           className={cn(
             "size-1.5 rounded-full",
-            playing ? "bg-(--nle-playhead)" : "bg-(--nle-pick)",
+            playing ? "bg-playhead" : "bg-pick",
           )}
         />
         {playing ? "Playing" : "Ready"}

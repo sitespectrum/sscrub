@@ -1,8 +1,13 @@
 "use client";
 
+import { Skeleton } from "@/components/ui/skeleton";
+import { Asset, Sink } from "@/lib/api/sscrub-api-schema";
+import { hash } from "@/lib/format";
+import { type SinkType } from "@/lib/media";
 import { cn } from "@/lib/utils";
 import {
   AudioLinesIcon,
+  BadgeQuestionMarkIcon,
   CameraIcon,
   LoaderCircleIcon,
   PlaneIcon,
@@ -10,13 +15,12 @@ import {
   TriangleAlertIcon,
   VideoIcon,
 } from "lucide-react";
-import { type Clip, type Sink, type SinkKind, hash } from "../_lib/data";
 
 export function SinkIcon({
-  kind,
+  type,
   className,
 }: {
-  kind: SinkKind;
+  type: SinkType;
   className?: string;
 }) {
   const Icon = {
@@ -25,7 +29,8 @@ export function SinkIcon({
     drone: PlaneIcon,
     phone: SmartphoneIcon,
     audio: AudioLinesIcon,
-  }[kind];
+    unknown: BadgeQuestionMarkIcon,
+  }[type];
   return <Icon className={className} />;
 }
 
@@ -34,11 +39,27 @@ export function SinkBadge({
   sink,
   size = "md",
   className,
+  loading = false,
 }: {
-  sink: Sink;
+  sink?: Sink;
   size?: "sm" | "md" | "lg";
   className?: string;
+  loading?: boolean;
 }) {
+  if (loading) {
+    return (
+      <Skeleton
+        className={cn(
+          "relative shrink-0 rounded-[5px]",
+          size === "sm" && "size-5",
+          size === "md" && "size-6",
+          size === "lg" && "size-8 rounded-md",
+          className,
+        )}
+      ></Skeleton>
+    );
+  }
+
   return (
     <span
       className={cn(
@@ -49,12 +70,12 @@ export function SinkBadge({
         className,
       )}
       style={{
-        background: `color-mix(in oklch, ${sink.color} 16%, transparent)`,
-        color: sink.color,
-        ["--tw-ring-color" as string]: `color-mix(in oklch, ${sink.color} 28%, transparent)`,
+        background: `color-mix(in oklch, ${sink?.color} 16%, transparent)`,
+        color: sink?.color,
+        ["--tw-ring-color" as string]: `color-mix(in oklch, ${sink?.color} 28%, transparent)`,
       }}
     >
-      <SinkIcon kind={sink.kind} />
+      <SinkIcon type={(sink?.type || "unknown") as SinkType} />
     </span>
   );
 }
@@ -75,7 +96,7 @@ const noise = (n: number, seed: number) => {
  */
 export function Frame({
   sink,
-  clip,
+  asset,
   t,
   className,
   grain = true,
@@ -83,30 +104,31 @@ export function Frame({
   live = false,
 }: {
   sink: Sink;
-  clip: Clip;
+  asset: Asset;
   t: number;
   className?: string;
   grain?: boolean;
   thumb?: boolean;
   live?: boolean;
 }) {
-  if (sink.kind === "audio")
+  if (sink.type === "audio")
     return (
       <AudioFrame
         sink={sink}
-        clip={clip}
+        asset={asset}
         t={t}
         className={className}
         thumb={thumb}
       />
     );
 
-  const seed = hash(clip.id);
-  const secs = Math.max(0, t - clip.start) / 1000;
-  const hue = (sink.hue + (seed % 80) - 40 + 360) % 360;
+  const seed = hash(asset.id);
+  const secs =
+    Math.max(0, t - Date.parse(asset.captureDate ?? asset.uploadDate)) / 1000;
   const drift =
-    sink.kind === "drone" ? 0.06 : sink.kind === "action" ? 0.09 : 0.035;
+    sink.type === "drone" ? 0.06 : sink.type === "action" ? 0.09 : 0.035;
   const count = thumb ? 3 : 5;
+  const hue = 240;
 
   return (
     <div
@@ -146,11 +168,13 @@ export function Frame({
       <div
         className={cn(
           "absolute inset-0",
-          sink.kind === "action" ? "vignette-strong" : "vignette",
+          sink.type === "action" ? "vignette-strong" : "vignette",
         )}
       />
-      {sink.kind === "drone" && !thumb && <DroneHud />}
-      {clip.status !== "Ready" && <StatusOverlay clip={clip} compact={thumb} />}
+      {sink.type === "drone" && !thumb && <DroneHud />}
+      {asset.status !== "Ready" && (
+        <StatusOverlay asset={asset} compact={thumb} />
+      )}
     </div>
   );
 }
@@ -171,18 +195,18 @@ function DroneHud() {
 /** Scrolling waveform drawn as a single SVG path (one DOM write per frame). */
 export function AudioFrame({
   sink,
-  clip,
+  asset,
   t,
   className,
   thumb,
 }: {
   sink: Sink;
-  clip: Clip;
+  asset: Asset;
   t: number;
   className?: string;
   thumb?: boolean;
 }) {
-  const seed = hash(clip.id) % 1000;
+  const seed = hash(asset.id) % 1000;
   const bucket = Math.floor(t / 100);
   const bars = thumb ? 24 : 96;
   const level = (i: number) => {
@@ -203,9 +227,7 @@ export function AudioFrame({
   }
 
   return (
-    <div
-      className={cn("relative overflow-hidden flex bg-(--nle-well)", className)}
-    >
+    <div className={cn("relative overflow-hidden flex bg-well", className)}>
       <div className="flex-1 relative px-[5%]">
         <svg
           viewBox="0 0 100 100"
@@ -225,11 +247,13 @@ export function AudioFrame({
           <path d={upcoming} fill={sink.color} fillOpacity=".28" />
         </svg>
         {!thumb && (
-          <div className="absolute inset-y-[10%] left-1/2 w-px bg-(--nle-playhead)" />
+          <div className="absolute inset-y-[10%] left-1/2 w-px bg-playhead" />
         )}
       </div>
       {!thumb && <Meters levels={[level(bars / 2), level(bars / 2 + 3)]} />}
-      {clip.status !== "Ready" && <StatusOverlay clip={clip} compact={thumb} />}
+      {asset.status !== "Ready" && (
+        <StatusOverlay asset={asset} compact={thumb} />
+      )}
     </div>
   );
 }
@@ -243,11 +267,11 @@ export function Meters({
   className?: string;
 }) {
   return (
-    <div className={cn("flex gap-[3px] py-[5%] pr-[3%] pl-1", className)}>
+    <div className={cn("flex gap-0.75 py-[5%] pr-[3%] pl-1", className)}>
       {levels.map((v, i) => (
         <div
           key={i}
-          className="w-[5px] relative rounded-[1px] bg-white/[0.06] overflow-hidden"
+          className="w-1.25 relative rounded-[1px] bg-white/6 overflow-hidden"
         >
           <div
             className="absolute inset-x-0 bottom-0"
@@ -268,12 +292,18 @@ export function Meters({
   );
 }
 
-function StatusOverlay({ clip, compact }: { clip: Clip; compact?: boolean }) {
+function StatusOverlay({
+  asset,
+  compact,
+}: {
+  asset: Asset;
+  compact?: boolean;
+}) {
   return (
     <div className="absolute inset-0 bg-black/75 flex flex-col items-center justify-center gap-1.5 text-white/80">
-      {clip.status === "Failed" ? (
+      {asset.status === "Failed" ? (
         <TriangleAlertIcon
-          className={cn("text-(--nle-reject)", compact ? "size-3.5" : "size-5")}
+          className={cn("text-reject", compact ? "size-3.5" : "size-5")}
         />
       ) : (
         <LoaderCircleIcon
@@ -282,13 +312,13 @@ function StatusOverlay({ clip, compact }: { clip: Clip; compact?: boolean }) {
       )}
       {!compact && (
         <span className="text-[0.65rem] font-medium">
-          {clip.status}
-          {clip.progress != null && (
+          {asset.status}
+          {/* {asset.progress != null && (
             <span className="tc text-white/60">
               {" "}
-              · {Math.round(clip.progress * 100)}%
+              · {Math.round(asset.progress * 100)}%
             </span>
-          )}
+          )} */}
         </span>
       )}
     </div>

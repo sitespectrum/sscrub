@@ -1,22 +1,13 @@
 "use client";
 
+import { HOUR_MS, MIN_MS, fmtClock, fmtDur } from "@/lib/format";
+import { type Clip, type SinkView, clipsInRange } from "@/lib/media";
 import { cn } from "@/lib/utils";
 import { memo, useRef } from "react";
-import {
-  type Sink,
-  HOUR_MS,
-  MIN_MS,
-  clipsInRange,
-  fmtClock,
-  fmtDur,
-} from "../_lib/data";
 
-/**
- * "When was each sink recording" chart. Rows can carry custom labels, and an
- * optional brush picks a time range (new-project flow).
- */
 export function Coverage({
   sinks,
+  clips,
   from,
   to,
   dimmed,
@@ -27,12 +18,14 @@ export function Coverage({
   brush,
   className,
 }: {
-  sinks: Sink[];
+  sinks: SinkView[];
+  /** Clips keyed by sink id (see `groupBySink`). */
+  clips: Record<string, Clip[] | undefined>;
   from: number;
   to: number;
   dimmed?: Set<string>;
   rowHeight?: number;
-  label?: false | ((s: Sink) => React.ReactNode);
+  label?: false | ((s: SinkView) => React.ReactNode);
   labelWidth?: number;
   showAxis?: boolean;
   brush?: {
@@ -89,7 +82,7 @@ export function Coverage({
     label === false
       ? null
       : (label ??
-        ((s: Sink) => (
+        ((s: SinkView) => (
           <span
             className={cn(
               "flex items-center gap-2 truncate text-[0.7rem] text-muted-foreground",
@@ -133,6 +126,7 @@ export function Coverage({
         >
           <Rows
             sinks={sinks}
+            clips={clips}
             from={from}
             to={to}
             dimmed={dimmed}
@@ -141,15 +135,15 @@ export function Coverage({
           {brush && (
             <>
               <div
-                className="absolute -inset-y-1.5 left-0 bg-(--nle-panel)/70 pointer-events-none"
+                className="absolute -inset-y-1.5 left-0 bg-panel/70 pointer-events-none"
                 style={{ width: pct(brush.start) }}
               />
               <div
-                className="absolute -inset-y-1.5 right-0 bg-(--nle-panel)/70 pointer-events-none"
+                className="absolute -inset-y-1.5 right-0 bg-panel/70 pointer-events-none"
                 style={{ left: pct(brush.end) }}
               />
               <div
-                className="absolute -inset-y-1.5 rounded-[5px] ring-1 ring-primary bg-primary/[0.07] cursor-grab active:cursor-grabbing shadow-[0_0_0_4px_oklch(0.6_0.2_285/0.12)]"
+                className="absolute -inset-y-1.5 rounded-[5px] ring-1 ring-primary bg-primary/[0.07] cursor-grab active:cursor-grabbing shadow-[0_0_0_4px_color-mix(in_oklch,var(--primary)_12%,transparent)]"
                 style={{
                   left: pct(brush.start),
                   width: pct(from + brush.end - brush.start),
@@ -165,7 +159,7 @@ export function Coverage({
                       edge === "start" ? "-left-2" : "-right-2",
                     )}
                   >
-                    <div className="h-7 w-[7px] rounded-full bg-primary ring-2 ring-(--nle-panel) flex flex-col items-center justify-center gap-[2px]">
+                    <div className="h-7 w-[7px] rounded-full bg-primary ring-2 ring-panel flex flex-col items-center justify-center gap-[2px]">
                       <span className="w-[3px] h-px bg-white/70" />
                       <span className="w-[3px] h-px bg-white/70" />
                       <span className="w-[3px] h-px bg-white/70" />
@@ -201,12 +195,15 @@ export function Coverage({
 /** Static part of the chart; memoized so dragging the brush doesn't re-render clips. */
 const Rows = memo(function Rows({
   sinks,
+  clips,
   from,
   to,
   dimmed,
   rowHeight,
 }: {
-  sinks: Sink[];
+  sinks: SinkView[];
+  /** Clips keyed by sink id (see `groupBySink`). */
+  clips: Record<string, Clip[] | undefined>;
   from: number;
   to: number;
   dimmed?: Set<string>;
@@ -235,7 +232,7 @@ const Rows = memo(function Rows({
           )}
           style={{ height: rowHeight }}
         >
-          {clipsInRange(s.id, from, to).map((c) => (
+          {clipsInRange(clips[s.id] ?? [], from, to).map((c) => (
             <div
               key={c.id}
               className="absolute inset-y-0 rounded-[2px]"

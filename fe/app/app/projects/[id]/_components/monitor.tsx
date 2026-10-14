@@ -2,18 +2,12 @@
 
 import { cn } from "@/lib/utils";
 import { ArrowRightIcon, CheckIcon, LayoutGridIcon, XIcon } from "lucide-react";
-import { Frame } from "../../_components/frame";
-import {
-  type Clip,
-  type Sink,
-  clipAt,
-  fmtDur,
-  fmtTC,
-  nextClip,
-} from "../../_lib/data";
+import { Frame } from "@/app/app/_components/frame";
+import { fmtDur, fmtTC } from "@/lib/format";
+import { type Clip, type SinkView, clipAt, nextClip } from "@/lib/media";
 
 export interface Track {
-  sink: Sink;
+  sink: SinkView;
   clips: Clip[];
   index: number;
 }
@@ -52,10 +46,10 @@ export function Monitor({
             size="lg"
           />
         </div>
-        <div className="h-[84px] shrink-0 flex gap-1.5 justify-center px-3 pb-3">
+        <div className="h-21 shrink-0 flex gap-1.5 justify-center px-3 pb-3">
           <button
             onClick={() => onSolo(null)}
-            className="h-full aspect-video rounded-[3px] ring-1 ring-white/10 bg-white/[0.03] flex flex-col items-center justify-center gap-1.5 text-[0.6rem] text-white/60 transition-colors hover:text-white hover:bg-white/[0.06]"
+            className="h-full aspect-video rounded-[3px] ring-1 ring-white/10 bg-white/3 flex flex-col items-center justify-center gap-1.5 text-[0.6rem] text-white/60 transition-colors hover:text-white hover:bg-white/6"
           >
             <LayoutGridIcon className="size-4" />
             <span>
@@ -140,24 +134,25 @@ function Tile({
         onClick={onClick}
         className={cn(
           "group relative aspect-video overflow-hidden bg-neutral-950",
-          sm ? "rounded-[3px]" : "rounded-[2px]",
+          sm ? "rounded-[3px]" : "rounded-xs",
           onClick && "cursor-pointer",
-          "after:absolute after:inset-0 after:pointer-events-none after:rounded-[inherit] after:ring-1 after:ring-inset after:ring-white/[0.08]",
+          "after:absolute after:inset-0 after:pointer-events-none after:rounded-[inherit] after:ring-1 after:ring-inset after:ring-white/8",
           onClick && "hover:after:ring-white/30",
           active && "after:ring-2 after:ring-primary hover:after:ring-primary",
         )}
         style={{ width: "min(100cqw, calc(100cqh * 16 / 9))" }}
       >
         {clip ? (
-          <Frame
-            sink={sink}
-            clip={clip}
-            t={t}
-            grain={!sm}
-            thumb={sm}
-            live={!sm}
-            className="absolute inset-0"
-          />
+          // <Frame
+          //   sink={sink}
+          //   clip={clip}
+          //   t={t}
+          //   grain={!sm}
+          //   thumb={sm}
+          //   live={!sm}
+          //   className="absolute inset-0"
+          // />
+          <></>
         ) : (
           <div className="absolute inset-0 hatch flex flex-col items-center justify-center gap-2">
             {!sm && (
@@ -171,7 +166,7 @@ function Tile({
                       e.stopPropagation();
                       onSeek(next.start);
                     }}
-                    className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.06] px-2.5 h-6 text-[0.65rem] text-white/80 ring-1 ring-inset ring-white/10 transition-colors hover:bg-white/10"
+                    className="inline-flex items-center gap-1.5 rounded-full bg-white/6 px-2.5 h-6 text-[0.65rem] text-white/80 ring-1 ring-inset ring-white/10 transition-colors hover:bg-white/10"
                   >
                     Next clip in{" "}
                     <span className="tc">{fmtDur(next.start - t)}</span>
@@ -211,8 +206,8 @@ function Tile({
               "absolute inline-flex items-center justify-center rounded-full",
               sm ? "top-1 right-1 size-3.5" : "top-2 right-2 size-5",
               flag === "pick"
-                ? "bg-(--nle-pick) text-black/80"
-                : "bg-(--nle-reject) text-white",
+                ? "bg-pick text-black/80"
+                : "bg-reject text-white",
             )}
           >
             {flag === "pick" ? (
@@ -228,7 +223,7 @@ function Tile({
         {clip && !sm && (
           <div
             className={cn(
-              "absolute bottom-0 inset-x-0 flex items-end gap-2 bg-gradient-to-t from-black/70 via-black/20 to-transparent text-white/85",
+              "absolute bottom-0 inset-x-0 flex items-end gap-2 bg-linear-to-t from-black/70 via-black/20 to-transparent text-white/85",
               size === "lg"
                 ? "px-3 pb-2 pt-8 text-xs"
                 : "px-2 pb-1.5 pt-6 text-[0.6rem]",

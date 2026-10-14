@@ -1,10 +1,11 @@
 "use client";
 
-import type { Metadata } from "next";
-import { Geist, Geist_Mono, Inter } from "next/font/google";
-import "./globals.css";
+import { Toaster } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
+import { Geist, Geist_Mono, Inter } from "next/font/google";
+import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
@@ -39,8 +40,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           inter.variable,
         )}
       >
-        <body className="min-h-full flex flex-col dark">{children}</body>
+        <body className="min-h-full flex flex-col dark">
+          {children}
+          <Toaster />
+        </body>
       </html>
+      <ReactQueryDevtools initialIsOpen={false} />
     </QueryClientProvider>
   );
 }
