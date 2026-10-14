@@ -25,6 +25,7 @@ public static class AssetAndUploadEndpoints
                 FileName = body.FileName,
                 SinkId = body.SinkId,
                 UploadDate = DateTime.UtcNow,
+                ContentType = body.ContentType,
                 Status = AssetStatus.Uploading
             };
             asset.ObjectKey = $"assets/{asset.Id}";
@@ -69,6 +70,7 @@ public static class AssetAndUploadEndpoints
             SscrubDbContext db,
             [FromKeyedServices("asset")] IAmazonS3 s3,
             IOptions<AssetStorageBucketOptions> assetS3Options,
+            MediaProcessingQueue queue,
             CompleteUploadBody body) =>
         {
             var asset = await db.Assets.FirstOrDefaultAsync(x => x.Id == id);
@@ -86,6 +88,8 @@ public static class AssetAndUploadEndpoints
             asset.Size = head.ContentLength;
             asset.Status = AssetStatus.Processing;
             await db.SaveChangesAsync();
+
+            await queue.EnqueueAsync(id);
 
             return TypedResults.Accepted((string?)null);
         });

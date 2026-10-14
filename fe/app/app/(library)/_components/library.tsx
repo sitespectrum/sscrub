@@ -4,6 +4,13 @@ import { Frame, SinkBadge, SinkIcon } from "@/app/app/_components/frame";
 import { Segmented } from "@/app/app/_components/panel";
 import { Button } from "@/components/ui/button";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
@@ -18,6 +25,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
 import { $api } from "@/lib/api/openapi-clients";
 import { Asset, Sink } from "@/lib/api/sscrub-api-schema";
+import { API_URL } from "@/lib/constants";
 import { HOUR_MS, fmtClock, fmtDur, fmtSize } from "@/lib/format";
 import { SinkType, type AssetStatus } from "@/lib/media";
 import { uploadFile } from "@/lib/upload";
@@ -30,6 +38,7 @@ import {
   LayoutGridIcon,
   ListIcon,
   LoaderCircleIcon,
+  Maximize2Icon,
   SearchIcon,
   TriangleAlertIcon,
   UploadCloudIcon,
@@ -459,85 +468,149 @@ function ClipCard({
   onSelect: (additive: boolean) => void;
 }) {
   const [hover, setHover] = useState<number | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const t =
     Date.parse(asset.captureDate ?? asset.uploadDate) +
     asset.durationMillis * (hover ?? 0.35);
 
   return (
-    <div
-      className="group flex flex-col gap-2 cursor-default"
-      onClick={(e) => onSelect(e.metaKey || e.ctrlKey || e.shiftKey)}
-    >
+    <>
       <div
-        className={cn(
-          "relative rounded-md overflow-hidden ring-1 ring-white/6 transition-shadow",
-          selected
-            ? "ring-2 ring-primary shadow-[0_0_0_4px_color-mix(in_oklch,var(--primary)_18%,transparent)]"
-            : "group-hover:ring-white/20",
-        )}
-        onPointerMove={(e) => {
-          const r = e.currentTarget.getBoundingClientRect();
-          setHover(
-            Math.min(0.999, Math.max(0, (e.clientX - r.left) / r.width)),
-          );
-        }}
-        onPointerLeave={() => setHover(null)}
+        className="group flex flex-col gap-2 cursor-default"
+        onClick={(e) => onSelect(e.metaKey || e.ctrlKey || e.shiftKey)}
       >
-        <Frame
-          sink={sink}
-          asset={asset}
-          t={t}
-          live={hover !== null}
-          className="aspect-video"
-        />
-        {hover !== null && (
-          <>
-            <div
-              className="absolute inset-y-0 w-px bg-playhead/90"
-              style={{ left: `${hover * 100}%` }}
-            />
-            <span className="absolute top-1.5 left-1/2 -translate-x-1/2 rounded bg-black/70 px-1.5 py-px tc text-[0.6rem] text-white">
-              {fmtClock(t)}
-            </span>
-          </>
-        )}
-        <span
+        <div
           className={cn(
-            "absolute top-1.5 left-1.5 size-4 rounded-lg ring-1 flex items-center justify-center transition-opacity",
+            "relative rounded-md overflow-hidden ring-1 ring-white/6 transition-shadow",
             selected
-              ? "bg-primary ring-primary opacity-100"
-              : "bg-black/40 ring-white/40 opacity-0 group-hover:opacity-100",
+              ? "ring-2 ring-primary shadow-[0_0_0_4px_color-mix(in_oklch,var(--primary)_18%,transparent)]"
+              : "group-hover:ring-white/20",
           )}
+          onPointerMove={(e) => {
+            const r = e.currentTarget.getBoundingClientRect();
+            setHover(
+              Math.min(0.999, Math.max(0, (e.clientX - r.left) / r.width)),
+            );
+          }}
+          onPointerLeave={() => setHover(null)}
         >
-          {selected && <CheckIcon className="size-3 text-white" />}
-        </span>
-        <span className="absolute bottom-1.5 right-1.5 rounded-lg bg-black/70 px-1 py-px tc text-[0.6rem] text-white">
-          {fmtDur(asset.durationMillis)}
-        </span>
-        {showSink && (
-          <span className="absolute bottom-1.5 left-1.5 rounded-lg bg-black/70 pl-1 pr-1.5 py-px text-[0.6rem] text-white flex items-center gap-1">
-            <span style={{ color: sink.color }}>
-              <SinkIcon type={sink.type as SinkType} className="size-2.5" />
-            </span>
-            {sink.name}
+          <Frame
+            sink={sink}
+            asset={asset}
+            t={t}
+            live={hover !== null}
+            className="aspect-video"
+          />
+          {hover !== null && (
+            <>
+              <div
+                className="absolute inset-y-0 w-px bg-playhead/90"
+                style={{ left: `${hover * 100}%` }}
+              />
+              <span className="absolute top-1.5 left-1/2 -translate-x-1/2 rounded bg-black/70 px-1.5 py-px tc text-[0.6rem] text-white">
+                {fmtClock(t)}
+              </span>
+            </>
+          )}
+          <span
+            className={cn(
+              "absolute top-1.5 left-1.5 size-4 rounded-lg ring-1 flex items-center justify-center transition-opacity",
+              selected
+                ? "bg-primary ring-primary opacity-100"
+                : "bg-black/40 ring-white/40 opacity-0 group-hover:opacity-100",
+            )}
+          >
+            {selected && <CheckIcon className="size-3 text-white" />}
           </span>
-        )}
-      </div>
-      <div className="flex items-start gap-2 px-0.5">
-        <div className="flex-1 min-w-0">
-          <div className="tc text-xs font-medium truncate">
-            {asset.fileName}
-          </div>
-          <div className="tc text-[0.65rem] text-muted-foreground">
-            {fmtClock(Date.parse(asset.captureDate ?? asset.uploadDate))}{" "}
-            <Dot /> {fmtSize(asset.size)}
-          </div>
+          {(asset.status == "Ready" || asset.status == "Processing") && (
+            <>
+              <button
+                type="button"
+                title="Fullscreen preview"
+                className="absolute top-1.5 right-1.5 size-5 rounded-lg bg-black/40 ring-1 ring-white/40 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-black/70 focus-visible:opacity-100 transition-opacity"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setPreviewOpen(true);
+                }}
+              >
+                <Maximize2Icon className="size-3" />
+                <span className="sr-only">Fullscreen preview</span>
+              </button>
+            </>
+          )}
+          <span className="absolute bottom-1.5 right-1.5 rounded-lg bg-black/70 px-1 py-px tc text-[0.6rem] text-white">
+            {fmtDur(asset.durationMillis)}
+          </span>
+          {showSink && (
+            <span className="absolute bottom-1.5 left-1.5 rounded-lg bg-black/70 pl-1 pr-1.5 py-px text-[0.6rem] text-white flex items-center gap-1">
+              <span style={{ color: sink.color }}>
+                <SinkIcon type={sink.type as SinkType} className="size-2.5" />
+              </span>
+              {sink.name}
+            </span>
+          )}
         </div>
-        {asset.status !== "Ready" && (
-          <span className="mt-0.5">{STATUS[asset.status].icon}</span>
-        )}
+        <div className="flex items-start gap-2 px-0.5">
+          <div className="flex-1 min-w-0">
+            <div className="tc text-xs font-medium truncate">
+              {asset.fileName}
+            </div>
+            <div className="tc text-[0.65rem] text-muted-foreground">
+              {fmtClock(Date.parse(asset.captureDate ?? asset.uploadDate))}{" "}
+              <Dot /> {fmtSize(asset.size)}
+            </div>
+          </div>
+          {asset.status !== "Ready" && (
+            <span className="mt-0.5">{STATUS[asset.status].icon}</span>
+          )}
+        </div>
       </div>
-    </div>
+
+      <ClipPreviewDialog
+        asset={asset}
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+      />
+    </>
+  );
+}
+
+function ClipPreviewDialog({
+  asset,
+  open,
+  onOpenChange,
+}: {
+  asset: Asset;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const src = `${API_URL}/api/assets/${asset.id}/presignedUrl`;
+  const mediaClass = "min-h-0 w-full h-full object-contain";
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="w-screen h-dvh max-w-none sm:max-w-none rounded-none ring-0 bg-black p-4 grid-rows-[auto_minmax(0,1fr)]">
+        <DialogHeader className="pr-8">
+          <DialogTitle className="tc truncate text-white">
+            {asset.fileName}
+          </DialogTitle>
+          <DialogDescription className="tc text-[0.65rem]">
+            {fmtClock(Date.parse(asset.captureDate ?? asset.uploadDate))}{" "}
+            <Dot /> {fmtDur(asset.durationMillis)} <Dot /> {fmtSize(asset.size)}
+          </DialogDescription>
+        </DialogHeader>
+        {open &&
+          (asset.contentType.startsWith("image/") ? (
+            <img src={src} alt={asset.fileName} className={mediaClass} />
+          ) : asset.contentType.startsWith("audio/") ? (
+            <div className="flex items-center justify-center">
+              <audio src={src} controls autoPlay className="w-full max-w-xl" />
+            </div>
+          ) : (
+            <video src={src} controls autoPlay className={mediaClass} />
+          ))}
+      </DialogContent>
+    </Dialog>
   );
 }
 

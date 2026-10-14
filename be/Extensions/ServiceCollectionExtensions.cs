@@ -26,6 +26,16 @@ internal static class ServiceCollectionExtensions
             ResponseChecksumValidation = Amazon.Runtime.ResponseChecksumValidation.WHEN_REQUIRED,
         }));
 
+        var derivedS3Options = configuration.GetRequiredSection(DerivedStorageBucketOptions.SectionName).Get<DerivedStorageBucketOptions>() ?? new();
+        services.AddKeyedSingleton<IAmazonS3>("derived", (_, __) => new AmazonS3Client(derivedS3Options.AccessKey, derivedS3Options.SecretKey, new AmazonS3Config
+        {
+            ForcePathStyle = true,
+            ServiceURL = derivedS3Options.Endpoint,
+            AuthenticationRegion = derivedS3Options.Region,
+            RequestChecksumCalculation = Amazon.Runtime.RequestChecksumCalculation.WHEN_REQUIRED,
+            ResponseChecksumValidation = Amazon.Runtime.ResponseChecksumValidation.WHEN_REQUIRED,
+        }));
+
         services.ConfigureHttpJsonOptions(options =>
         {
             options.SerializerOptions.NumberHandling = JsonNumberHandling.Strict;
@@ -52,6 +62,9 @@ internal static class ServiceCollectionExtensions
         });
 
         services.AddSingleton<AssetUrlSigner>();
+        services.AddSingleton<MediaProcessingQueue>();
+        services.AddScoped<MediaProcessor>();
+        services.AddHostedService<MediaProcessingWorker>();
 
         services.AddProblemDetails();
 
@@ -69,6 +82,12 @@ internal static class ServiceCollectionExtensions
 
         services.AddOptions<AssetProxyOptions>()
             .BindConfiguration(AssetProxyOptions.SectionName);
+
+        services.AddOptions<MediaProcessingOptions>()
+            .BindConfiguration(MediaProcessingOptions.SectionName);
+
+        services.AddOptions<DerivedStorageBucketOptions>()
+            .BindConfiguration(DerivedStorageBucketOptions.SectionName);
 
         return services;
     }

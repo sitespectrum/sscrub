@@ -1,7 +1,8 @@
 "use client";
 
 import { Skeleton } from "@/components/ui/skeleton";
-import { Asset, Sink } from "@/lib/api/sscrub-api-schema";
+import { Asset, FilmstripInfo, Sink } from "@/lib/api/sscrub-api-schema";
+import { DERIVED_URL } from "@/lib/constants";
 import { hash } from "@/lib/format";
 import { type SinkType } from "@/lib/media";
 import { cn } from "@/lib/utils";
@@ -111,24 +112,39 @@ export function Frame({
   thumb?: boolean;
   live?: boolean;
 }) {
-  if (sink.type === "audio")
-    return (
-      <AudioFrame
-        sink={sink}
-        asset={asset}
-        t={t}
-        className={className}
-        thumb={thumb}
-      />
-    );
+  const millis = Math.max(
+    0,
+    t - Date.parse(asset.captureDate ?? asset.uploadDate),
+  );
+
+  if (asset.status === "Ready") {
+    if (asset.contentType.startsWith("audio"))
+      return (
+        <AudioFrame
+          sink={sink}
+          asset={asset}
+          t={t}
+          className={className}
+          thumb={thumb}
+        />
+      );
+
+    if (asset.filmstrip)
+      return (
+        <FilmstripFrame
+          offsetMs={millis}
+          strip={asset.filmstrip}
+          className={className}
+        />
+      );
+  }
 
   const seed = hash(asset.id);
-  const secs =
-    Math.max(0, t - Date.parse(asset.captureDate ?? asset.uploadDate)) / 1000;
+  const secs = millis / 1000;
   const drift =
     sink.type === "drone" ? 0.06 : sink.type === "action" ? 0.09 : 0.035;
   const count = thumb ? 3 : 5;
-  const hue = 240;
+  const hue = (240 - seed) % 360;
 
   return (
     <div
@@ -255,6 +271,39 @@ export function AudioFrame({
         <StatusOverlay asset={asset} compact={thumb} />
       )}
     </div>
+  );
+}
+
+function FilmstripFrame({
+  strip,
+  offsetMs,
+  className,
+}: {
+  strip: FilmstripInfo;
+  offsetMs: number;
+  className?: string;
+}) {
+  const rows = Math.ceil(strip.frameCount / strip.columns);
+  const i = Math.min(
+    strip.frameCount - 1,
+    Math.max(0, Math.floor(offsetMs / strip.intervalMillis)),
+  );
+  const col = i % strip.columns;
+  const row = Math.floor(i / strip.columns);
+  // At p%, the image's p% point lines up with the box's p% point, so
+  // tile c of n sits at c / (n - 1); a single column/row is just 0%.
+  const pct = (k: number, n: number) => (n > 1 ? (k / (n - 1)) * 100 : 0);
+
+  return (
+    <div
+      className={cn("w-full bg-no-repeat", className)}
+      style={{
+        aspectRatio: `${strip.frameWidth} / ${strip.frameHeight}`,
+        backgroundImage: `url(${DERIVED_URL}/${strip.objectKey})`,
+        backgroundSize: `${strip.columns * 100}% ${rows * 100}%`,
+        backgroundPosition: `${pct(col, strip.columns)}% ${pct(row, rows)}%`,
+      }}
+    />
   );
 }
 

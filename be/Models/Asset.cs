@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
+using Microsoft.EntityFrameworkCore;
 
 namespace SscrubServer.Models;
 
@@ -17,6 +18,8 @@ public class Asset
     public Guid Id { get; set; }
     [JsonIgnore]
     public string ObjectKey { get; set; } = string.Empty;
+    public string? ThumbnailKey { get; set; }
+    public FilmstripInfo? Filmstrip { get; set; }
     [Required]
     public string FileName { get; set; } = string.Empty;
     [Required]
@@ -39,4 +42,21 @@ public class Asset
 
     [JsonIgnore]
     public virtual Sink Sink { get; set; } = null!;
+}
+
+[Owned]
+public class FilmstripInfo
+{
+    [Required]
+    public string ObjectKey { get; set; } = string.Empty;
+    [Required]
+    public int FrameCount { get; set; }
+    [Required]
+    public int Columns { get; set; }
+    [Required]
+    public int FrameWidth { get; set; }
+    [Required]
+    public int FrameHeight { get; set; }
+    [Required]
+    public long IntervalMillis { get; set; }
 }

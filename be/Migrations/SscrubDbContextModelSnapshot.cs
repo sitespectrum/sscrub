@@ -54,6 +54,9 @@ namespace SscrubServer.Migrations
                     b.Property<int>("Status")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("ThumbnailKey")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("UploadDate")
                         .HasColumnType("TEXT");
 
@@ -102,6 +105,40 @@ namespace SscrubServer.Migrations
                         .HasForeignKey("SinkId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.OwnsOne("SscrubServer.Models.FilmstripInfo", "Filmstrip", b1 =>
+                        {
+                            b1.Property<Guid>("AssetId")
+                                .HasColumnType("TEXT");
+
+                            b1.Property<int>("Columns")
+                                .HasColumnType("INTEGER");
+
+                            b1.Property<int>("FrameCount")
+                                .HasColumnType("INTEGER");
+
+                            b1.Property<int>("FrameHeight")
+                                .HasColumnType("INTEGER");
+
+                            b1.Property<int>("FrameWidth")
+                                .HasColumnType("INTEGER");
+
+                            b1.Property<long>("IntervalMillis")
+                                .HasColumnType("INTEGER");
+
+                            b1.Property<string>("ObjectKey")
+                                .IsRequired()
+                                .HasColumnType("TEXT");
+
+                            b1.HasKey("AssetId");
+
+                            b1.ToTable("Assets");
+
+                            b1.WithOwner()
+                                .HasForeignKey("AssetId");
+                        });
+
+                    b.Navigation("Filmstrip");
 
                     b.Navigation("Sink");
                 });

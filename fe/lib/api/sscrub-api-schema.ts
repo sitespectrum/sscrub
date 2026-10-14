@@ -417,6 +417,8 @@ export interface components {
         Asset: {
             /** Format: uuid */
             id: string;
+            thumbnailKey?: null | string;
+            filmstrip?: null | components["schemas"]["FilmstripInfo"];
             fileName: string;
             /** Format: int64 */
             durationMillis: number;
@@ -445,6 +447,19 @@ export interface components {
         };
         ErrorResponse: {
             error: string;
+        };
+        FilmstripInfo: {
+            objectKey: string;
+            /** Format: int32 */
+            frameCount: number;
+            /** Format: int32 */
+            columns: number;
+            /** Format: int32 */
+            frameWidth: number;
+            /** Format: int32 */
+            frameHeight: number;
+            /** Format: int64 */
+            intervalMillis: number;
         };
         LibraryStats: {
             /** Format: int32 */
@@ -511,6 +526,7 @@ export type AssetStatus = components['schemas']['AssetStatus'];
 export type CompleteUploadBody = components['schemas']['CompleteUploadBody'];
 export type CreateSinkBody = components['schemas']['CreateSinkBody'];
 export type ErrorResponse = components['schemas']['ErrorResponse'];
+export type FilmstripInfo = components['schemas']['FilmstripInfo'];
 export type LibraryStats = components['schemas']['LibraryStats'];
 export type LibraryStatsResponse = components['schemas']['LibraryStatsResponse'];
 export type Part = components['schemas']['Part'];
