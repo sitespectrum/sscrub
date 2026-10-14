@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Amazon.S3;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi;
@@ -24,6 +25,11 @@ internal static class ServiceCollectionExtensions
             RequestChecksumCalculation = Amazon.Runtime.RequestChecksumCalculation.WHEN_REQUIRED,
             ResponseChecksumValidation = Amazon.Runtime.ResponseChecksumValidation.WHEN_REQUIRED,
         }));
+
+        services.ConfigureHttpJsonOptions(options =>
+        {
+            options.SerializerOptions.NumberHandling = JsonNumberHandling.Strict;
+        });
 
         services.AddEndpointsApiExplorer();
         services.AddOpenApi(options =>
