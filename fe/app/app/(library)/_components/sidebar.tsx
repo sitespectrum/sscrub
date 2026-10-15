@@ -1,29 +1,15 @@
 "use client";
 
-import { SinkBadge, SinkIcon } from "@/app/app/_components/frame";
+import { SinkBadge } from "@/app/app/_components/frame";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Kbd } from "@/components/ui/kbd";
-import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { $api } from "@/lib/api/openapi-clients";
 import { fmtSize } from "@/lib/format";
-import { SinkType } from "@/lib/media";
 import { cn } from "@/lib/utils";
 import { ClockIcon, FilmIcon, PlusIcon, TriangleAlertIcon } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useState } from "react";
+import { SinkDialog } from "./sink-dialog";
 import { UploadTray } from "./upload-tray";
 
 const STORAGE_QUOTA = 5e10;
@@ -67,7 +53,13 @@ export function Sidebar() {
 
       <div className="px-4 pt-3 pb-1.5 flex items-center justify-between">
         <span className="eyebrow">Sinks</span>
-        <NewSinkDialog />
+        <SinkDialog
+          trigger={
+            <Button size="icon-xs" variant="ghost" title="New sink">
+              <PlusIcon />
+            </Button>
+          }
+        />
       </div>
 
       <div className="px-2 flex flex-col gap-px overflow-y-auto">
@@ -208,67 +200,5 @@ function NavItem({
         </span>
       )}
     </Link>
-  );
-}
-
-function NewSinkDialog() {
-  const [kind, setKind] = useState<SinkType>("camera");
-  return (
-    <Dialog>
-      <DialogTrigger
-        render={<Button size="icon-xs" variant="ghost" title="New sink" />}
-      >
-        <PlusIcon />
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>New sink</DialogTitle>
-          <DialogDescription>
-            A sink is one recording device. Everything dumped into it lands on
-            its own track.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="sink-name">Name</Label>
-            <Input id="sink-name" placeholder="C-Cam" />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label>Device type</Label>
-            <div className="grid grid-cols-5 gap-1.5">
-              {(["camera", "action", "drone", "phone", "audio"] as const).map(
-                (k) => (
-                  <button
-                    key={k}
-                    onClick={() => setKind(k)}
-                    className={cn(
-                      "flex flex-col items-center gap-1.5 rounded-md py-2.5 text-[0.65rem] capitalize text-muted-foreground ring-1 ring-inset ring-hairline hover:bg-white/4 hover:text-foreground",
-                      kind === k &&
-                        "ring-primary bg-primary/10 text-foreground",
-                    )}
-                  >
-                    <SinkIcon type={k} className="size-4" />
-                    {k}
-                  </button>
-                ),
-              )}
-            </div>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="sink-offset">Clock offset</Label>
-            <Input id="sink-offset" placeholder="+00:00:00" className="tc" />
-            <span className="text-[0.65rem] text-muted-foreground">
-              Corrects a device clock that drifted from real time. <Kbd>±</Kbd>
-            </span>
-          </div>
-        </div>
-        <DialogFooter>
-          <DialogClose render={<Button variant="outline" />}>
-            Cancel
-          </DialogClose>
-          <DialogClose render={<Button />}>Create sink</DialogClose>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }

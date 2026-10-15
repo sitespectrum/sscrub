@@ -5,10 +5,13 @@ import { Segmented } from "@/app/app/_components/panel";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   DropdownMenu,
@@ -30,6 +33,7 @@ import { HOUR_MS, fmtClock, fmtDur, fmtSize } from "@/lib/format";
 import { SinkType, type AssetStatus } from "@/lib/media";
 import { uploadFile } from "@/lib/upload";
 import { cn } from "@/lib/utils";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowDownUpIcon,
   CheckIcon,
@@ -39,12 +43,15 @@ import {
   ListIcon,
   LoaderCircleIcon,
   Maximize2Icon,
+  PencilIcon,
   SearchIcon,
+  Trash2Icon,
   TriangleAlertIcon,
   UploadCloudIcon,
   XIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { SinkDialog } from "./sink-dialog";
 
 type Sort = "captured" | "duration" | "size" | "name";
 
@@ -212,6 +219,16 @@ export function Library({ sinkId }: { sinkId: string | null }) {
           )}
         </div>
         <div className="flex-1" />
+        {sink && (
+          <SinkDialog
+            sink={sink}
+            trigger={
+              <Button size="lg" variant="outline">
+                <PencilIcon data-icon="inline-start" /> Edit sink
+              </Button>
+            }
+          />
+        )}
         <input
           ref={uploadFileRef}
           type="file"
@@ -394,9 +411,11 @@ export function Library({ sinkId }: { sinkId: string | null }) {
           <Button variant="ghost">
             <DownloadIcon data-icon="inline-start" /> Download
           </Button>
-          <Button variant="ghost" className="text-reject">
-            <Trash2Icon data-icon="inline-start" /> Delete
-          </Button> */}
+          */}
+          <DeleteAssetsDialog
+            ids={[...selected]}
+            onDeleted={() => setSelected(new Set())}
+          />
           <Button
             size="icon"
             variant="ghost"
@@ -411,6 +430,70 @@ export function Library({ sinkId }: { sinkId: string | null }) {
 }
 
 const Dot = () => <span className="mx-1 opacity-40">·</span>;
+
+function DeleteAssetsDialog({
+  ids,
+  onDeleted,
+}: {
+  ids: string[];
+  onDeleted: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const del = $api.useMutation("delete", "/api/assets/{id}");
+  const [pending, setPending] = useState(false);
+
+  const confirm = async () => {
+    setPending(true);
+    const results = await Promise.allSettled(
+      ids.map((id) => del.mutateAsync({ params: { path: { id } } })),
+    );
+    setPending(false);
+
+    queryClient.invalidateQueries({ queryKey: ["get", "/api/assets"] });
+    queryClient.invalidateQueries({ queryKey: ["get", "/api/stats/library"] });
+
+    const failed = results.filter((r) => r.status === "rejected").length;
+    if (failed > 0)
+      toast.add({
+        type: "error",
+        title: `Could not delete ${failed} of ${ids.length} clips`,
+      });
+
+    setOpen(false);
+    onDeleted();
+  };
+
+  const label = ids.length === 1 ? "1 clip" : `${ids.length} clips`;
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !pending && setOpen(o)}>
+      <DialogTrigger
+        render={<Button variant="ghost" className="text-reject" />}
+      >
+        <Trash2Icon data-icon="inline-start" /> Delete
+      </DialogTrigger>
+      <DialogContent showCloseButton={false}>
+        <DialogHeader>
+          <DialogTitle>Delete {label}?</DialogTitle>
+          <DialogDescription>
+            The original footage and all derived files will be permanently
+            removed. This can not be undone.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <DialogClose render={<Button variant="outline" disabled={pending} />}>
+            Cancel
+          </DialogClose>
+          <Button variant="destructive" onClick={confirm} disabled={pending}>
+            {pending && <Spinner data-icon="inline-start" />}
+            Delete {label}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 function DropZone({ sinkName }: { sinkName?: string }) {
   return (
