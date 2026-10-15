@@ -154,6 +154,19 @@ public static class AssetAndUploadEndpoints
 
             db.Remove(asset);
 
+            if (asset.Status is AssetStatus.Uploading)
+                try
+                {
+                    await assetS3.AbortMultipartUploadAsync(new()
+                    {
+                        BucketName = assetBucket.Value.Bucket,
+                        Key = asset.ObjectKey,
+                        UploadId = asset.UploadId
+                    });
+
+                }
+                catch { }
+
             try
             {
                 await assetS3.DeleteObjectAsync(new()
