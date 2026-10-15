@@ -1,8 +1,8 @@
+import { StartUploadResponse } from "./api/sscrub-api-schema";
 import { API_URL } from "./constants";
-import { StartUploadRes } from "./types";
 import { HttpError, withRetry } from "./utils";
 
-const CONCURRENCY = 4;
+const PART_CONCURRENCY = 4;
 const MAX_RETRIES = 5;
 
 interface Part {
@@ -31,7 +31,7 @@ export async function uploadFile(file: File, options: UploadOptions) {
     }),
   });
 
-  const startData: StartUploadRes = await startRes.json();
+  const startData: StartUploadResponse = await startRes.json();
 
   const loaded = new Array<number>(startData.urls.length).fill(0);
   const reportProgress = () =>
@@ -76,7 +76,7 @@ export async function uploadFile(file: File, options: UploadOptions) {
   try {
     await Promise.all(
       Array.from(
-        { length: Math.min(CONCURRENCY, startData.urls.length) },
+        { length: Math.min(PART_CONCURRENCY, startData.urls.length) },
         worker,
       ),
     );

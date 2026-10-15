@@ -4,6 +4,7 @@ import { Toaster } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
+import { Provider as JotaiProvider } from "jotai";
 import { Geist, Geist_Mono, Inter } from "next/font/google";
 import "./globals.css";
 
@@ -29,23 +30,25 @@ const queryClient = new QueryClient();
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <QueryClientProvider client={queryClient}>
-      <html
-        lang="en"
-        className={cn(
-          "h-full",
-          "antialiased",
-          geistSans.variable,
-          geistMono.variable,
-          "font-sans",
-          inter.variable,
-        )}
-      >
-        <body className="min-h-full flex flex-col dark">
-          {children}
-          <Toaster />
-        </body>
-      </html>
-      <ReactQueryDevtools initialIsOpen={false} />
+      <JotaiProvider>
+        <html
+          lang="en"
+          className={cn(
+            "h-full",
+            "antialiased",
+            geistSans.variable,
+            geistMono.variable,
+            "font-sans",
+            inter.variable,
+          )}
+        >
+          <body className="min-h-full flex flex-col dark">
+            {children}
+            <Toaster />
+          </body>
+        </html>
+        <ReactQueryDevtools initialIsOpen={false} />
+      </JotaiProvider>
     </QueryClientProvider>
   );
 }

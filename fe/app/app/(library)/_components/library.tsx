@@ -30,8 +30,8 @@ import { $api } from "@/lib/api/openapi-clients";
 import { Asset, Sink } from "@/lib/api/sscrub-api-schema";
 import { API_URL } from "@/lib/constants";
 import { HOUR_MS, fmtClock, fmtDur, fmtSize } from "@/lib/format";
+import { useUploadFiles } from "@/lib/hooks/useUploadFiles";
 import { SinkType, type AssetStatus } from "@/lib/media";
-import { uploadFile } from "@/lib/upload";
 import { cn } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -91,6 +91,8 @@ export function Library({ sinkId }: { sinkId: string | null }) {
         sinkId ? val?.bySink?.find((x) => x.sinkId == sinkId) : val?.overall,
     },
   );
+
+  const { uploadFiles } = useUploadFiles(sinkId ?? "");
 
   const [view, setView] = useState<"grid" | "list">("grid");
   const [sort, setSort] = useState<Sort>("captured");
@@ -162,15 +164,20 @@ export function Library({ sinkId }: { sinkId: string | null }) {
         type: "danger",
         title: "SinkID is null",
       });
+      return;
     }
 
-    const file = uploadFileRef.current?.files?.item(0);
-    if (!file) return;
+    if (!uploadFileRef.current?.files) return;
 
-    uploadFile(file, {
-      sinkId: sinkId!,
-      onProgress: (uploaded, total) => console.log(uploaded / (total || 1)),
-    });
+    uploadFiles(uploadFileRef.current.files);
+
+    // const file = uploadFileRef.current?.files?.item(0);
+    // if (!file) return;
+
+    // uploadFile(file, {
+    //   sinkId: sinkId!,
+    //   onProgress: (uploaded, total) => console.log(uploaded / (total || 1)),
+    // });
   };
 
   useEffect(() => {
@@ -219,11 +226,11 @@ export function Library({ sinkId }: { sinkId: string | null }) {
           )}
         </div>
         <div className="flex-1" />
-        {sink && (
+        {sinkId && (
           <SinkDialog
             sink={sink}
             trigger={
-              <Button size="lg" variant="outline">
+              <Button size="lg" variant="outline" disabled={sinkLoading}>
                 <PencilIcon data-icon="inline-start" /> Edit sink
               </Button>
             }
@@ -234,6 +241,7 @@ export function Library({ sinkId }: { sinkId: string | null }) {
           type="file"
           aria-hidden="true"
           className="hidden"
+          multiple
         />
         <Button
           size="lg"
@@ -605,7 +613,9 @@ function ClipCard({
           >
             {selected && <CheckIcon className="size-3 text-white" />}
           </span>
-          {(asset.status == "Ready" || asset.status == "Processing") && (
+          {(asset.status == "Ready" ||
+            asset.status == "Processing" ||
+            asset.status == "Failed") && (
             <>
               <button
                 type="button"
