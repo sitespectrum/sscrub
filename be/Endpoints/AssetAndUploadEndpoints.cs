@@ -140,6 +140,56 @@ public static class AssetAndUploadEndpoints
 
             return TypedResults.Redirect(url);
         });
+
+        app.MapDelete("/api/assets/{id:guid}", async Task<Results<NoContent, NotFound>> (
+            Guid id,
+            SscrubDbContext db,
+            [FromKeyedServices("asset")] IAmazonS3 assetS3,
+            [FromKeyedServices("derived")] IAmazonS3 derivedS3,
+            IOptions<AssetStorageBucketOptions> assetBucket,
+            IOptions<DerivedStorageBucketOptions> derivedBucket) =>
+        {
+            var asset = await db.Assets.FirstOrDefaultAsync(x => x.Id == id);
+            if (asset is null) return TypedResults.NotFound();
+
+            db.Remove(asset);
+
+            try
+            {
+                await assetS3.DeleteObjectAsync(new()
+                {
+                    BucketName = assetBucket.Value.Bucket,
+                    Key = asset.ObjectKey
+                });
+            }
+            catch { }
+
+            if (!string.IsNullOrWhiteSpace(asset.ThumbnailKey))
+                try
+                {
+                    await derivedS3.DeleteObjectAsync(new()
+                    {
+                        BucketName = derivedBucket.Value.Bucket,
+                        Key = asset.ThumbnailKey
+                    });
+                }
+                catch { }
+
+            if (!string.IsNullOrWhiteSpace(asset.Filmstrip?.ObjectKey))
+                try
+                {
+                    await derivedS3.DeleteObjectAsync(new()
+                    {
+                        BucketName = derivedBucket.Value.Bucket,
+                        Key = asset.Filmstrip?.ObjectKey
+                    });
+                }
+                catch { }
+
+            await db.SaveChangesAsync();
+
+            return TypedResults.NoContent();
+        });
     }
 
 }

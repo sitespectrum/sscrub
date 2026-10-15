@@ -53,7 +53,36 @@ public static class SinkEndpoints
             return TypedResults.Ok(sink);
         });
 
-        app.MapDelete("/api/sinks/{id:guid}", async Task<Results<Ok, NotFound>> (
+        app.MapPut("/api/sinks/{id:guid}", async Task<Results<Ok<Sink>, BadRequest<ErrorResponse>, NotFound<ErrorResponse>>> (
+            Guid id,
+            CreateSinkBody body,
+            SscrubDbContext db) =>
+        {
+            var sink = await db.Sinks.FirstOrDefaultAsync(x => x.Id == id);
+            if (sink is null) return TypedResults.NotFound(new ErrorResponse($"Cannot find sink {id}"));
+
+            if (string.IsNullOrWhiteSpace(body.Name))
+                return TypedResults.BadRequest(new ErrorResponse("Name can not be empty"));
+
+            if (string.IsNullOrWhiteSpace(body.Model))
+                return TypedResults.BadRequest(new ErrorResponse("Model can not be empty"));
+
+            if (string.IsNullOrWhiteSpace(body.Type))
+                return TypedResults.BadRequest(new ErrorResponse("Type can not be empty"));
+
+            var color = string.IsNullOrWhiteSpace(body.Color) ? "blue" : body.Color;
+
+            sink.Name = body.Name;
+            sink.Model = body.Model;
+            sink.Type = body.Type;
+            sink.Color = color;
+
+            await db.SaveChangesAsync();
+
+            return TypedResults.Ok(sink);
+        });
+
+        app.MapDelete("/api/sinks/{id:guid}", async Task<Results<NoContent, NotFound>> (
             Guid id,
             SscrubDbContext db) =>
         {
@@ -63,7 +92,7 @@ public static class SinkEndpoints
             db.Sinks.Remove(sink);
             await db.SaveChangesAsync();
 
-            return TypedResults.Ok();
+            return TypedResults.NoContent();
         });
     }
 
