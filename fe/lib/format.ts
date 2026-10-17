@@ -4,6 +4,7 @@
 export const SEC_MS = 1000;
 export const MIN_MS = 60 * SEC_MS;
 export const HOUR_MS = 60 * MIN_MS;
+export const DAY_MS = 24 * HOUR_MS;
 
 /** Stable 32-bit FNV-1a hash, used to derive deterministic visuals from ids. */
 export function hash(s: string) {
@@ -44,11 +45,12 @@ export function fmtSize(bytes: number) {
   return `${bytes.toFixed(bytes < 10 && i > 1 ? 1 : 0)} ${u[i]}`;
 }
 
-export function fmtDate(ms: number) {
+export function fmtDate(ms: number, year = false) {
   return new Date(ms).toLocaleDateString("en-US", {
     weekday: "short",
     month: "short",
     day: "numeric",
+    year: year ? "numeric" : undefined,
     timeZone: "UTC",
   });
 }

@@ -29,7 +29,7 @@ import { toast } from "@/components/ui/toast";
 import { $api } from "@/lib/api/openapi-clients";
 import { Asset, Sink } from "@/lib/api/sscrub-api-schema";
 import { API_URL } from "@/lib/constants";
-import { HOUR_MS, fmtClock, fmtDur, fmtSize } from "@/lib/format";
+import { DAY_MS, fmtClock, fmtDate, fmtDur, fmtSize } from "@/lib/format";
 import { useUploadFiles } from "@/lib/hooks/useUploadFiles";
 import { SinkType, type AssetStatus } from "@/lib/media";
 import { cn } from "@/lib/utils";
@@ -110,8 +110,8 @@ export function Library({ sinkId }: { sinkId: string | null }) {
     );
     const by: Record<Sort, (a: Asset, b: Asset) => number> = {
       captured: (a, b) =>
-        Date.parse(a.captureDate ?? a.uploadDate) -
-        Date.parse(b.captureDate ?? b.uploadDate),
+        Date.parse(b.captureDate ?? b.uploadDate) -
+        Date.parse(a.captureDate ?? a.uploadDate),
       duration: (a, b) => b.durationMillis - a.durationMillis,
       size: (a, b) => b.size - a.size,
       name: (a, b) => a.fileName.localeCompare(b.fileName),
@@ -122,21 +122,18 @@ export function Library({ sinkId }: { sinkId: string | null }) {
   const groups = useMemo(() => {
     if (sort !== "captured")
       return [{ key: "all", label: null as string | null, assets: searchRes }];
-    const hourAssetsMap = new Map<number, Asset[]>();
+    const dayAssetsMap = new Map<number, Asset[]>();
     for (const asset of searchRes) {
-      const hour =
-        Math.floor(
-          Date.parse(asset.captureDate ?? asset.uploadDate) / HOUR_MS,
-        ) * HOUR_MS;
-      hourAssetsMap.set(hour, [...(hourAssetsMap.get(hour) ?? []), asset]);
+      const day =
+        Math.floor(Date.parse(asset.captureDate ?? asset.uploadDate) / DAY_MS) *
+        DAY_MS;
+      dayAssetsMap.set(day, [...(dayAssetsMap.get(day) ?? []), asset]);
     }
-    return [...hourAssetsMap]
-      .map(([hourNum, hourAssets]) => ({
-        key: String(hourNum),
-        label: `${fmtClock(hourNum, false)} – ${fmtClock(hourNum + HOUR_MS, false)}`,
-        assets: hourAssets,
-      }))
-      .toReversed();
+    return [...dayAssetsMap].map(([dayNum, dayAssets]) => ({
+      key: String(dayNum),
+      label: fmtDate(dayNum, true),
+      assets: dayAssets,
+    }));
   }, [searchRes, sort]);
 
   const totalSize = libraryStats?.size;
@@ -392,7 +389,7 @@ export function Library({ sinkId }: { sinkId: string | null }) {
                     </div>
                   ) : (
                     <ClipTable
-                      assets={searchRes}
+                      assets={group.assets}
                       loading={assetsLoading}
                       sinkId={sinkId}
                       selected={selected}
@@ -688,6 +685,8 @@ function ClipPreviewDialog({
             {asset.fileName}
           </DialogTitle>
           <DialogDescription className="tc text-[0.65rem]">
+            {fmtDate(Date.parse(asset.captureDate ?? asset.uploadDate), true)}{" "}
+            <Dot />{" "}
             {fmtClock(Date.parse(asset.captureDate ?? asset.uploadDate))}{" "}
             <Dot /> {fmtDur(asset.durationMillis)} <Dot /> {fmtSize(asset.size)}
           </DialogDescription>
