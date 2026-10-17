@@ -1,0 +1,53 @@
+services:
+  api:
+    build: ./be
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      Secrets__JwtKey: ${Secrets__JwtKey:?}
+
+      AssetStorageBucket__Region:
+      AssetStorageBucket__Endpoint: ${AssetStorageBucket__Endpoint:?}
+      AssetStorageBucket__AccessKey: ${AssetStorageBucket__AccessKey:?}
+      AssetStorageBucket__SecretKey: ${AssetStorageBucket__SecretKey:?}
+      AssetStorageBucket__Bucket: ${AssetStorageBucket__Bucket:?}
+
+      DerivedStorageBucket__Region:
+      DerivedStorageBucket__Endpoint: ${DerivedStorageBucket__Endpoint:?}
+      DerivedStorageBucket__AccessKey: ${DerivedStorageBucket__AccessKey:?}
+      DerivedStorageBucket__SecretKey: ${DerivedStorageBucket__SecretKey:?}
+      DerivedStorageBucket__Bucket: ${DerivedStorageBucket__Bucket:?}
+      DerivedStorageBucket__PublicUrl: ${DerivedStorageBucket__PublicUrl:?}
+
+      AssetProxy__UrlSigningSecret: ${AssetProxy__UrlSigningSecret:?}
+      AssetProxy__BaseUrl: ${AssetProxy__BaseUrl:?}
+      AssetProxy__LifetimeSeconds:
+    volumes:
+      - api-data:/app/data
+    # ports:
+      # - "127.0.0.1:5200:5200"
+
+  frontend:
+    build:
+      context: ./fe
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?set NEXT_PUBLIC_API_URL in .env}
+        NEXT_PUBLIC_DERIVED_URL: ${NEXT_PUBLIC_DERIVED_URL:?set NEXT_PUBLIC_DERIVED_URL in .env}
+    restart: unless-stopped
+    depends_on:
+      - api
+    # ports:
+      # - "127.0.0.1:5201:5201"
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?set TUNNEL_TOKEN in .env}
+    depends_on:
+      - api
+      - frontend
+
+volumes:
+  api-data:
