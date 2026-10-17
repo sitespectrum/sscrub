@@ -6,9 +6,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { $api } from "@/lib/api/openapi-clients";
 import { fmtSize } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { ClockIcon, FilmIcon, PlusIcon, TriangleAlertIcon } from "lucide-react";
+import { FilmIcon, PlusIcon, TriangleAlertIcon } from "lucide-react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, usePathname } from "next/navigation";
 import { SinkDialog } from "./sink-dialog";
 import { UploadTray } from "./upload-tray";
 
@@ -16,6 +16,7 @@ const STORAGE_QUOTA = 5e10;
 
 export function Sidebar() {
   const { id: activeId } = useParams<{ id?: string }>();
+  const pathname = usePathname();
   const { data: sinks, isLoading: sinksLoading } = $api.useQuery(
     "get",
     "/api/sinks",
@@ -25,29 +26,38 @@ export function Sidebar() {
     "/api/stats/library",
   );
 
+  const { data: attention, isLoading: attentionLoading } = $api.useQuery(
+    "get",
+    "/api/assets/attention",
+    undefined,
+    { refetchInterval: 15_000 },
+  );
+
   return (
     <aside className="h-full flex flex-col rounded-md border border-hairline bg-panel overflow-hidden">
       <div className="p-2 flex flex-col gap-px">
         <NavItem
           href="/app"
-          active={!activeId}
+          active={pathname === "/app"}
           icon={<FilmIcon />}
           label="All footage"
           meta={libraryStats?.overall?.count}
           loading={libraryStatsLoading}
         />
-        <NavItem
+        {/* <NavItem
           icon={<ClockIcon />}
           label="Recently added"
           meta={0}
           loading={libraryStatsLoading}
-        />
+        /> */}
         <NavItem
+          href="/app/attention"
+          active={pathname === "/app/attention"}
           icon={<TriangleAlertIcon />}
           label="Needs attention"
-          meta={0}
-          tone="warn"
-          loading={libraryStatsLoading}
+          meta={attention?.length}
+          tone={attention?.length ? "warn" : undefined}
+          loading={attentionLoading}
         />
       </div>
 

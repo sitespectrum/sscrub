@@ -14,7 +14,8 @@ public class MediaProcessor(
   IOptions<AssetStorageBucketOptions> assetBucket,
   IOptions<DerivedStorageBucketOptions> derivedBucket,
   IOptions<MediaProcessingOptions> options,
-  AssetUrlSigner signer)
+  AssetUrlSigner signer,
+  MediaProcessingErrors errors)
 {
     private const int FrameWidth = 320, FrameHeight = 214, MaxFrames = 100, MaxColumns = 10;
 
@@ -22,6 +23,20 @@ public class MediaProcessor(
     private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
     public async Task ProcessAssetAsync(Asset asset, CancellationToken ct)
+    {
+        try
+        {
+            await ProcessAssetCoreAsync(asset, ct);
+            errors.Clear(asset.Id);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            errors.Set(asset.Id, ex.Message);
+            throw;
+        }
+    }
+
+    private async Task ProcessAssetCoreAsync(Asset asset, CancellationToken ct)
     {
         var opt = options.Value;
         var source = signer.Sign(asset.ObjectKey);

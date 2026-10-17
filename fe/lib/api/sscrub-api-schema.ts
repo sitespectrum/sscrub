@@ -383,6 +383,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/assets/attention": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AttentionItem"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/assets/{id}/presignedUrl": {
         parameters: {
             query?: never;
@@ -521,6 +556,12 @@ export interface components {
         };
         /** @enum {unknown} */
         AssetStatus: "Uploading" | "Processing" | "Ready" | "Failed";
+        AttentionItem: {
+            asset: components["schemas"]["Asset"];
+            error: null | string;
+            /** Format: date-time */
+            failedAt: null | string;
+        };
         CompleteUploadBody: {
             parts: components["schemas"]["Part"][];
         };
@@ -608,6 +649,7 @@ export interface components {
 }
 export type Asset = components['schemas']['Asset'];
 export type AssetStatus = components['schemas']['AssetStatus'];
+export type AttentionItem = components['schemas']['AttentionItem'];
 export type CompleteUploadBody = components['schemas']['CompleteUploadBody'];
 export type CreateSinkBody = components['schemas']['CreateSinkBody'];
 export type ErrorResponse = components['schemas']['ErrorResponse'];

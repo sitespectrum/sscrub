@@ -63,6 +63,7 @@ internal static class ServiceCollectionExtensions
 
         services.AddSingleton<AssetUrlSigner>();
         services.AddSingleton<MediaProcessingQueue>();
+        services.AddSingleton<MediaProcessingErrors>();
         services.AddScoped<MediaProcessor>();
         services.AddHostedService<MediaProcessingWorker>();
 

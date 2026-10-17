@@ -445,9 +445,9 @@ export function Library({ sinkId }: { sinkId: string | null }) {
   );
 }
 
-const Dot = () => <span className="mx-1 opacity-40">·</span>;
+export const Dot = () => <span className="mx-1 opacity-40">·</span>;
 
-function DeleteAssetsDialog({
+export function DeleteAssetsDialog({
   ids,
   onDeleted,
 }: {
@@ -468,6 +468,7 @@ function DeleteAssetsDialog({
 
     queryClient.invalidateQueries({ queryKey: ["get", "/api/assets"] });
     queryClient.invalidateQueries({ queryKey: ["get", "/api/stats/library"] });
+    queryClient.invalidateQueries({ queryKey: ["get", "/api/assets/attention"] });
 
     const failed = results.filter((r) => r.status === "rejected").length;
     if (failed > 0)

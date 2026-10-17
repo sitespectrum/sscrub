@@ -128,6 +128,19 @@ public static class AssetAndUploadEndpoints
             return TypedResults.Ok(await query.ToListAsync());
         });
 
+        app.MapGet("/api/assets/attention", async (SscrubDbContext db, MediaProcessingErrors errors) =>
+        {
+            var failed = await db.Assets
+                .Where(x => x.Status == AssetStatus.Failed)
+                .ToListAsync();
+
+            return TypedResults.Ok(failed
+                .Select(asset => (asset, error: errors.Get(asset.Id)))
+                .Select(x => new AttentionItem(x.asset, x.error?.Message, x.error?.FailedAt))
+                .OrderByDescending(x => x.FailedAt)
+                .ToList());
+        });
+
         app.MapGet("/api/assets/{id:guid}/presignedUrl", async Task<Results<RedirectHttpResult, NotFound>> (
             Guid id,
             SscrubDbContext db,
@@ -147,12 +160,14 @@ public static class AssetAndUploadEndpoints
             [FromKeyedServices("asset")] IAmazonS3 assetS3,
             [FromKeyedServices("derived")] IAmazonS3 derivedS3,
             IOptions<AssetStorageBucketOptions> assetBucket,
-            IOptions<DerivedStorageBucketOptions> derivedBucket) =>
+            IOptions<DerivedStorageBucketOptions> derivedBucket,
+            MediaProcessingErrors errors) =>
         {
             var asset = await db.Assets.FirstOrDefaultAsync(x => x.Id == id);
             if (asset is null) return TypedResults.NotFound();
 
             db.Remove(asset);
+            errors.Clear(id);
 
             if (asset.Status is AssetStatus.Uploading)
                 try
