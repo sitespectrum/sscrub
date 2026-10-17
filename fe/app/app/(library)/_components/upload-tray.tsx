@@ -3,6 +3,7 @@
 import { Spinner } from "@/components/ui/spinner";
 import { $api } from "@/lib/api/openapi-clients";
 import { pendingUploadsAtom } from "@/lib/atoms";
+import { fmtSize } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useAtomValue } from "jotai";
 import {
@@ -28,11 +29,9 @@ export function UploadTray() {
     (x) => x.state == "processing",
   ).length;
 
-  const overallProgress =
-    pendingUploads.reduce(
-      (a, b) => a + b.uploadedBytes / (b.totalBytes || 0),
-      0,
-    ) / Math.max(1, uploadingCount);
+  const uploadedBytes = pendingUploads.reduce((a, b) => a + b.uploadedBytes, 0);
+  const totalBytes = pendingUploads.reduce((a, b) => a + b.totalBytes, 0);
+  const overallProgress = uploadedBytes / (totalBytes || 1);
   const allDone = pendingUploads.every((x) => x.state == "done");
 
   // if (sinksLoading)
@@ -93,6 +92,9 @@ export function UploadTray() {
               )}
             </span>
           )}
+          <span className="tc text-[0.65rem] text-muted-foreground">
+            {fmtSize(uploadedBytes)} / {fmtSize(totalBytes)}
+          </span>
           <ChevronDownIcon
             className={cn(
               "size-3.5 text-muted-foreground transition-transform",
