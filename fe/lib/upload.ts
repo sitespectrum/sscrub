@@ -120,7 +120,7 @@ function uploadPart(
     const xhr = new XMLHttpRequest();
 
     xhr.open("PUT", url);
-    xhr.onprogress = (e) => onLoaded(e.loaded);
+    xhr.upload.onprogress = (e) => onLoaded(e.loaded);
 
     xhr.onload = () => {
       const eTag = xhr.getResponseHeader("ETag");
