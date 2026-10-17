@@ -158,7 +158,7 @@ export function Library({ sinkId }: { sinkId: string | null }) {
     uploadFileRef.current.click();
   };
 
-  const startUpload = async (event: InputEvent) => {
+  const startUpload = async (event: Event) => {
     if (!sinkId) {
       toast.add({
         type: "danger",
