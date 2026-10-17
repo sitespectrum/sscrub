@@ -16,7 +16,7 @@ public class MediaProcessor(
   IOptions<MediaProcessingOptions> options,
   AssetUrlSigner signer)
 {
-    private const int FrameWidth = 720, FrameHeight = 480, MaxFrames = 100, MaxColumns = 10;
+    private const int FrameWidth = 320, FrameHeight = 214, MaxFrames = 100, MaxColumns = 10;
 
     private static readonly JsonSerializerOptions ProbeJson = new() { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower };
     private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
@@ -170,7 +170,8 @@ public class MediaProcessor(
         var randomKey = Guid.NewGuid().ToString("N")[..12];
 
         var output = Path.Combine(workDir, "thumb.webp");
-        var seekSec = Math.Min(1000, durationMs / 10) / 1000.0;
+
+        var seekSec = Math.Min(5000, durationMs / 5) / 1000.0;
 
         await ProcessRunner.RunAsync(options.Value.FfmpegPath,
         [
@@ -178,7 +179,7 @@ public class MediaProcessor(
             "-ss", seekSec.ToString("0.###", Inv),
             .. HttpInputArgs(url),
             "-frames:v", "1", "-an",
-            "-vf", "scale=640:-2",
+            "-vf", "scale=640:-2,thumbnail=30",
             "-c:v", "libwebp", "-quality", "80",
             output,
         ], ct);
