@@ -47,7 +47,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             <Toaster />
           </body>
         </html>
-        <ReactQueryDevtools initialIsOpen={false} />
+        {process.env.NODE_ENV == "development" && (
+          <ReactQueryDevtools initialIsOpen={false} />
+        )}
       </JotaiProvider>
     </QueryClientProvider>
   );
