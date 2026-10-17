@@ -726,6 +726,7 @@ function ClipTable({
     "get",
     "/api/sinks",
   );
+  const [preview, setPreview] = useState<Asset | null>(null);
 
   if (loading) return <></>;
 
@@ -749,6 +750,12 @@ function ClipTable({
       {assets!.map((asset) => {
         const sink = sinks?.find((x) => x.id == asset.sinkId)!;
         const isSelected = asset.id && selected.has(asset.id);
+        const canPreview = asset.status !== "Uploading";
+        const openPreview = (e: React.MouseEvent) => {
+          if (!canPreview) return;
+          e.stopPropagation();
+          setPreview(asset);
+        };
         return (
           <div
             key={asset.id}
@@ -761,19 +768,31 @@ function ClipTable({
               isSelected && "bg-primary/10 hover:bg-primary/15",
             )}
           >
-            {}
-            <Frame
-              sink={sink}
-              asset={asset}
-              t={
-                Date.parse(asset.captureDate ?? asset.uploadDate) +
-                asset.durationMillis * 0.35
-              }
-              grain={false}
-              thumb
-              className="h-4.5 aspect-video rounded-xs"
-            />
-            <span className="tc truncate font-medium">{asset.fileName}</span>
+            <span
+              onClick={openPreview}
+              className={cn("flex", canPreview && "cursor-pointer")}
+            >
+              <Frame
+                sink={sink}
+                asset={asset}
+                t={
+                  Date.parse(asset.captureDate ?? asset.uploadDate) +
+                  asset.durationMillis * 0.35
+                }
+                grain={false}
+                thumb
+                className="h-4.5 aspect-video rounded-xs"
+              />
+            </span>
+            <span
+              onClick={openPreview}
+              className={cn(
+                "tc truncate font-medium",
+                canPreview && "cursor-pointer hover:underline",
+              )}
+            >
+              {asset.fileName}
+            </span>
             <span className="flex items-center gap-1.5 truncate text-muted-foreground">
               <span
                 className="size-2 rounded-xs"
@@ -800,6 +819,13 @@ function ClipTable({
           </div>
         );
       })}
+      {preview && (
+        <ClipPreviewDialog
+          asset={preview}
+          open
+          onOpenChange={(open) => !open && setPreview(null)}
+        />
+      )}
     </div>
   );
 }
