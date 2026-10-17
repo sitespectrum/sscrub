@@ -368,7 +368,7 @@ export function Library({ sinkId }: { sinkId: string | null }) {
                     <span className="flex-1 h-px bg-hairline" />
                   </div>
                 )}
-                <div className="px-5">
+                <div className="px-5 pt-1">
                   {view === "grid" ? (
                     <div
                       className="grid gap-x-3 gap-y-4"
