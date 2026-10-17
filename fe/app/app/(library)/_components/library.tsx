@@ -50,7 +50,7 @@ import {
   UploadCloudIcon,
   XIcon,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SinkDialog } from "./sink-dialog";
 
 type Sort = "captured" | "duration" | "size" | "name";
@@ -108,10 +108,11 @@ export function Library({ sinkId }: { sinkId: string | null }) {
       (asset) =>
         !cleanQuery || asset.fileName.toLowerCase().includes(cleanQuery),
     );
+    const capturedAt = new Map(
+      list.map((a) => [a.id, Date.parse(a.captureDate ?? a.uploadDate)]),
+    );
     const by: Record<Sort, (a: Asset, b: Asset) => number> = {
-      captured: (a, b) =>
-        Date.parse(b.captureDate ?? b.uploadDate) -
-        Date.parse(a.captureDate ?? a.uploadDate),
+      captured: (a, b) => capturedAt.get(b.id)! - capturedAt.get(a.id)!,
       duration: (a, b) => b.durationMillis - a.durationMillis,
       size: (a, b) => b.size - a.size,
       name: (a, b) => a.fileName.localeCompare(b.fileName),
@@ -127,7 +128,9 @@ export function Library({ sinkId }: { sinkId: string | null }) {
       const day =
         Math.floor(Date.parse(asset.captureDate ?? asset.uploadDate) / DAY_MS) *
         DAY_MS;
-      dayAssetsMap.set(day, [...(dayAssetsMap.get(day) ?? []), asset]);
+      const dayAssets = dayAssetsMap.get(day);
+      if (dayAssets) dayAssets.push(asset);
+      else dayAssetsMap.set(day, [asset]);
     }
     return [...dayAssetsMap].map(([dayNum, dayAssets]) => ({
       key: String(dayNum),
@@ -136,16 +139,24 @@ export function Library({ sinkId }: { sinkId: string | null }) {
     }));
   }, [searchRes, sort]);
 
+  const sinksById = useMemo(
+    () => new Map(sinks?.map((s) => [s.id, s])),
+    [sinks],
+  );
+
   const totalSize = libraryStats?.size;
   const totalDur = libraryStats?.durationMillis;
 
-  const toggleSelect = (id: string, additive: boolean) =>
-    setSelected((s) => {
-      const n = new Set(additive ? s : []);
-      if (s.has(id) && additive) n.delete(id);
-      else n.add(id);
-      return n;
-    });
+  const toggleSelect = useCallback(
+    (id: string, additive: boolean) =>
+      setSelected((s) => {
+        const n = new Set(additive ? s : []);
+        if (s.has(id) && additive) n.delete(id);
+        else n.add(id);
+        return n;
+      }),
+    [],
+  );
 
   const uploadFileRef = useRef<HTMLInputElement>(null);
 
@@ -380,10 +391,10 @@ export function Library({ sinkId }: { sinkId: string | null }) {
                         <ClipCard
                           key={asset.id}
                           asset={asset}
-                          sink={sinks?.find((x) => x.id == asset.sinkId)!}
+                          sink={sinksById.get(asset.sinkId)!}
                           showSink={!sink}
                           selected={selected.has(asset.id)}
-                          onSelect={(add) => toggleSelect(asset.id, add)}
+                          onSelect={toggleSelect}
                         />
                       ))}
                     </div>
@@ -542,7 +553,7 @@ const STATUS: Record<AssetStatus, { icon: React.ReactNode; label: string }> = {
   },
 };
 
-function ClipCard({
+const ClipCard = memo(function ClipCard({
   asset,
   sink,
   showSink,
@@ -553,7 +564,7 @@ function ClipCard({
   sink: Sink;
   showSink: boolean;
   selected: boolean;
-  onSelect: (additive: boolean) => void;
+  onSelect: (id: string, additive: boolean) => void;
 }) {
   const [hover, setHover] = useState<number | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -563,9 +574,12 @@ function ClipCard({
 
   return (
     <>
+      {/* -m-1 p-1 keeps the selection shadow inside content-visibility's paint containment */}
       <div
-        className="group flex flex-col gap-2 cursor-default"
-        onClick={(e) => onSelect(e.metaKey || e.ctrlKey || e.shiftKey)}
+        className="group -m-1 p-1 flex flex-col gap-2 cursor-default [content-visibility:auto] [contain-intrinsic-size:auto_200px]"
+        onClick={(e) =>
+          onSelect(asset.id, e.metaKey || e.ctrlKey || e.shiftKey)
+        }
       >
         <div
           className={cn(
@@ -656,14 +670,12 @@ function ClipCard({
         </div>
       </div>
 
-      <ClipPreviewDialog
-        asset={asset}
-        open={previewOpen}
-        onOpenChange={setPreviewOpen}
-      />
+      {previewOpen && (
+        <ClipPreviewDialog asset={asset} open onOpenChange={setPreviewOpen} />
+      )}
     </>
   );
-}
+});
 
 function ClipPreviewDialog({
   asset,

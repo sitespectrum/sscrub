@@ -129,11 +129,14 @@ export function Frame({
         />
       );
 
-    if (asset.filmstrip)
+    // The filmstrip sprite decodes to tens of megabytes, so it is only
+    // mounted while scrubbing; at rest every frame shows the small thumbnail.
+    if (asset.thumbnailKey || (live && asset.filmstrip))
       return (
-        <FilmstripFrame
-          offsetMs={millis}
+        <ThumbnailFrame
+          thumbnailKey={asset.thumbnailKey}
           strip={asset.filmstrip}
+          offsetMs={live ? millis : null}
           className={className}
         />
       );
@@ -269,6 +272,51 @@ export function AudioFrame({
       {!thumb && <Meters levels={[level(bars / 2), level(bars / 2 + 3)]} />}
       {asset.status !== "Ready" && (
         <StatusOverlay asset={asset} compact={thumb} />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Static thumbnail, with the filmstrip layered on top while `offsetMs` is set.
+ * The thumbnail stays underneath, so it shows until the sprite has loaded.
+ */
+function ThumbnailFrame({
+  thumbnailKey,
+  strip,
+  offsetMs,
+  className,
+}: {
+  thumbnailKey?: string | null;
+  strip?: FilmstripInfo | null;
+  offsetMs: number | null;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn("relative w-full overflow-hidden bg-black", className)}
+      style={
+        strip
+          ? { aspectRatio: `${strip.frameWidth} / ${strip.frameHeight}` }
+          : undefined
+      }
+    >
+      {thumbnailKey && (
+        <img
+          src={`${DERIVED_URL}/${thumbnailKey}`}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          draggable={false}
+          className="absolute inset-0 size-full object-contain"
+        />
+      )}
+      {strip && offsetMs !== null && (
+        <FilmstripFrame
+          offsetMs={offsetMs}
+          strip={strip}
+          className="absolute inset-0"
+        />
       )}
     </div>
   );
