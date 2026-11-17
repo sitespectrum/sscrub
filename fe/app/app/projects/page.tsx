@@ -19,15 +19,8 @@ import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
 import { $api } from "@/lib/api/openapi-clients";
 import { fmtAgo, fmtDur, fmtWindow } from "@/lib/format";
-import { useClips, useProjects, useSinks } from "@/lib/hooks/useMedia";
-import {
-  type Clip,
-  type Project,
-  type SinkView,
-  clipsInRange,
-  groupBySink,
-  nextClip,
-} from "@/lib/media";
+import { useProjects, useSinks } from "@/lib/hooks/useMedia";
+import { type ProjectSummary, type SinkView } from "@/lib/media";
 import { cn } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import { PlusIcon, Trash2Icon } from "lucide-react";
@@ -37,13 +30,11 @@ import { useMemo, useState } from "react";
 export default function ProjectsPage() {
   const projects = useProjects();
   const sinks = useSinks();
-  const clips = useClips();
   const sinkById = useMemo(
     () => new Map(sinks.data?.map((s) => [s.id, s])),
     [sinks.data],
   );
-  const clipsBySink = useMemo(() => groupBySink(clips.data ?? []), [clips.data]);
-  const loading = projects.isLoading || sinks.isLoading || clips.isLoading;
+  const loading = projects.isLoading || sinks.isLoading;
 
   return (
     <div className="flex-1 min-h-0 flex flex-col">
@@ -80,7 +71,6 @@ export default function ProjectsPage() {
                     key={p.id}
                     project={p}
                     sinkById={sinkById}
-                    clipsBySink={clipsBySink}
                   />
                 ))}
             <Link
@@ -107,22 +97,23 @@ export default function ProjectsPage() {
 function ProjectCard({
   project: p,
   sinkById,
-  clipsBySink,
 }: {
-  project: Project;
+  project: ProjectSummary;
   sinkById: Map<string, SinkView>;
-  clipsBySink: Record<string, Clip[] | undefined>;
 }) {
-  const sinks = p.sinkIds.flatMap((id) => sinkById.get(id) ?? []);
-  const video = sinks.filter((s) => s.kind !== "audio").slice(0, 4);
-  const posterT = p.start + (p.end - p.start) * 0.4;
-  const inRange = sinks.flatMap((s) =>
-    clipsInRange(clipsBySink[s.id] ?? [], p.start, p.end),
+  // Sinks deleted since the summary was fetched are skipped.
+  const tracks = p.sinks.flatMap((t) => {
+    const sink = sinkById.get(t.sinkId);
+    return sink ? [{ ...t, sink }] : [];
+  });
+  const sinks = tracks.map((t) => t.sink);
+  const coverage = Object.fromEntries(
+    tracks.map((t) => [t.sinkId, t.coverage]),
   );
-  const clipCount = inRange.length;
-  const culled = clipCount
-    ? inRange.filter((c) => p.flags[c.id]).length / clipCount
-    : 0;
+  const video = tracks.filter((t) => t.sink.kind !== "audio").slice(0, 4);
+  const posterT = p.start + (p.end - p.start) * 0.4;
+  const clipCount = p.clipCount;
+  const culled = clipCount ? p.flaggedCount / clipCount : 0;
 
   return (
     <div className="group relative">
@@ -137,20 +128,16 @@ function ProjectCard({
           video.length > 2 && "grid-rows-2",
         )}
       >
-        {video.map((s) => {
-          const cs = clipsInRange(clipsBySink[s.id] ?? [], p.start, p.end);
-          const clip =
-            cs.find(
-              (c) => posterT >= c.start && posterT < c.start + c.duration,
-            ) ??
-            nextClip(cs, posterT) ??
-            cs[0];
-          return clip ? (
+        {video.map(({ sink: s, poster }) =>
+          poster ? (
             <div key={s.id} className="relative min-h-0">
               <Frame
                 sink={s}
-                asset={clip.asset}
-                t={Math.max(posterT, clip.start)}
+                asset={poster}
+                t={Math.max(
+                  posterT,
+                  Date.parse(poster.captureDate ?? poster.uploadDate),
+                )}
                 thumb
                 className="absolute inset-0 transition-transform duration-500 group-hover:scale-[1.03]"
               />
@@ -160,8 +147,8 @@ function ProjectCard({
             </div>
           ) : (
             <div key={s.id} className="hatch" />
-          );
-        })}
+          ),
+        )}
       </div>
       <div className="p-4 flex flex-col gap-3">
         <div className="flex items-start justify-between gap-3">
@@ -179,7 +166,7 @@ function ProjectCard({
         </div>
         <Coverage
           sinks={sinks}
-          clips={clipsBySink}
+          clips={coverage}
           from={p.start}
           to={p.end}
           rowHeight={5}
@@ -219,7 +206,7 @@ function ProjectCard({
   );
 }
 
-function DeleteProjectButton({ project }: { project: Project }) {
+function DeleteProjectButton({ project }: { project: ProjectSummary }) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const del = $api.useMutation("delete", "/api/projects/{id}", {

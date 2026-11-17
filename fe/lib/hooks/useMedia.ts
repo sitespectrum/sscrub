@@ -5,11 +5,13 @@ import { $api } from "../api/openapi-clients";
 import type {
   Asset,
   ProjectResponse,
+  ProjectSummary as ApiProjectSummary,
   Sink,
 } from "../api/sscrub-api-schema";
 import {
   type Clip,
   type Project,
+  type ProjectSummary,
   type SinkType,
   type SinkView,
   fromApiFlag,
@@ -53,11 +55,34 @@ export const toProject = (p: ProjectResponse): Project => ({
   })),
 });
 
+export const toProjectSummary = (p: ApiProjectSummary): ProjectSummary => ({
+  id: p.id,
+  name: p.name,
+  start: Date.parse(p.start),
+  end: Date.parse(p.end),
+  updatedAt: Date.parse(p.updatedAt),
+  clipCount: p.clipCount,
+  flaggedCount: p.flaggedCount,
+  sinks: p.sinks.map((s) => ({
+    sinkId: s.sinkId,
+    poster: s.poster,
+    coverage: s.coverage.map((c, i) => {
+      const start = Date.parse(c.start);
+      return {
+        id: `${s.sinkId}:${i}`,
+        start,
+        duration: Date.parse(c.end) - start,
+        status: c.status,
+      };
+    }),
+  })),
+});
+
 // Module-level selectors keep `select` referentially stable across renders.
 const selectSinks = (s: Sink[]) => s.map(toSinkView);
 const selectClips = (a: Asset[]) =>
   a.map(toClip).sort((x, y) => x.start - y.start);
-const selectProjects = (p: ProjectResponse[]) => p.map(toProject);
+const selectProjects = (p: ApiProjectSummary[]) => p.map(toProjectSummary);
 
 export function useSinks() {
   return $api.useQuery("get", "/api/sinks", {}, { select: selectSinks });
@@ -68,6 +93,7 @@ export function useClips() {
   return $api.useQuery("get", "/api/assets", {}, { select: selectClips });
 }
 
+/** Project summaries for the list, most recently updated first. */
 export function useProjects() {
   return $api.useQuery("get", "/api/projects", {}, { select: selectProjects });
 }

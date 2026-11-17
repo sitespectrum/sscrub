@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using SscrubServer.Models;
 
 namespace SscrubServer;
@@ -32,3 +33,24 @@ public record ProjectResponse(
     DateTime UpdatedAt,
     List<ProjectFlagItem> Flags,
     List<ProjectMarker> Markers);
+
+/// <summary>Clips merged into one bar: touching or near-touching clips with the same status.</summary>
+public record CoverageSpan(
+    DateTime Start,
+    DateTime End,
+    [property: JsonConverter(typeof(JsonStringEnumConverter))] AssetStatus Status);
+
+/// <param name="Poster">The clip shown on the project card; null for audio sinks or sinks without clips.</param>
+public record ProjectSinkSummary(Guid SinkId, Asset? Poster, List<CoverageSpan> Coverage);
+
+/// <summary>What the project list needs, computed on the server so the client doesn't load the library.</summary>
+/// <param name="Sinks">Track order; deleted sinks are dropped.</param>
+public record ProjectSummary(
+    Guid Id,
+    string Name,
+    DateTime Start,
+    DateTime End,
+    DateTime UpdatedAt,
+    int ClipCount,
+    int FlaggedCount,
+    List<ProjectSinkSummary> Sinks);

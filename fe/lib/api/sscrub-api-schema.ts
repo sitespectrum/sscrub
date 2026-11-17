@@ -552,7 +552,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ProjectResponse"][];
+                        "application/json": components["schemas"]["ProjectSummary"][];
                     };
                 };
             };
@@ -934,6 +934,13 @@ export interface components {
         CompleteUploadBody: {
             parts: components["schemas"]["Part"][];
         };
+        CoverageSpan: {
+            /** Format: date-time */
+            start: string;
+            /** Format: date-time */
+            end: string;
+            status: components["schemas"]["AssetStatus"];
+        };
         CreateSinkBody: {
             name: string;
             model: string;
@@ -1016,6 +1023,28 @@ export interface components {
             flags: components["schemas"]["ProjectFlagItem"][];
             markers: components["schemas"]["ProjectMarker"][];
         };
+        ProjectSinkSummary: {
+            /** Format: uuid */
+            sinkId: string;
+            poster: null | components["schemas"]["Asset"];
+            coverage: components["schemas"]["CoverageSpan"][];
+        };
+        ProjectSummary: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: date-time */
+            start: string;
+            /** Format: date-time */
+            end: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: int32 */
+            clipCount: number;
+            /** Format: int32 */
+            flaggedCount: number;
+            sinks: components["schemas"]["ProjectSinkSummary"][];
+        };
         ServerInfoResponse: {
             name: string;
         };
@@ -1067,6 +1096,7 @@ export type AssetStatus = components['schemas']['AssetStatus'];
 export type AttentionItem = components['schemas']['AttentionItem'];
 export type ClipFlag = components['schemas']['ClipFlag'];
 export type CompleteUploadBody = components['schemas']['CompleteUploadBody'];
+export type CoverageSpan = components['schemas']['CoverageSpan'];
 export type CreateSinkBody = components['schemas']['CreateSinkBody'];
 export type ErrorResponse = components['schemas']['ErrorResponse'];
 export type FilmstripInfo = components['schemas']['FilmstripInfo'];
@@ -1078,6 +1108,8 @@ export type ProjectBody = components['schemas']['ProjectBody'];
 export type ProjectFlagItem = components['schemas']['ProjectFlagItem'];
 export type ProjectMarker = components['schemas']['ProjectMarker'];
 export type ProjectResponse = components['schemas']['ProjectResponse'];
+export type ProjectSinkSummary = components['schemas']['ProjectSinkSummary'];
+export type ProjectSummary = components['schemas']['ProjectSummary'];
 export type ServerInfoResponse = components['schemas']['ServerInfoResponse'];
 export type SetFlagBody = components['schemas']['SetFlagBody'];
 export type Sink = components['schemas']['Sink'];

@@ -36,6 +36,9 @@ export interface Clip {
   asset: Asset;
 }
 
+/** What the coverage chart draws per clip; a merged span from the server or a full `Clip`. */
+export type Span = Pick<Clip, "id" | "start" | "duration" | "status">;
+
 export type Flag = "pick" | "reject";
 
 export interface Marker {
@@ -61,11 +64,38 @@ export interface Project {
   markers: Marker[];
 }
 
+/** A project card's data, computed on the server (`GET /api/projects`). */
+export interface ProjectSummary {
+  id: string;
+  name: string;
+  /** Window start/end, epoch ms. */
+  start: number;
+  end: number;
+  /** Epoch ms. */
+  updatedAt: number;
+  /** Clips overlapping the window. */
+  clipCount: number;
+  /** Of those, how many are picked or rejected. */
+  flaggedCount: number;
+  /** Track order. */
+  sinks: {
+    sinkId: string;
+    /** The clip for the card's poster frame; null for audio or empty sinks. */
+    poster: Asset | null;
+    /** Clips merged into bars, ordered by start. */
+    coverage: Span[];
+  }[];
+}
+
 export const toApiFlag = (f: Flag): ClipFlag => (f === "pick" ? "Pick" : "Reject");
 export const fromApiFlag = (f: ClipFlag): Flag => (f === "Pick" ? "pick" : "reject");
 
 /** Clips that overlap [from, to). */
-export const clipsInRange = (clips: Clip[], from: number, to: number) =>
+export const clipsInRange = <T extends Pick<Clip, "start" | "duration">>(
+  clips: T[],
+  from: number,
+  to: number,
+) =>
   clips.filter((c) => c.start < to && c.start + c.duration > from);
 
 export const clipAt = (clips: Clip[], t: number) =>

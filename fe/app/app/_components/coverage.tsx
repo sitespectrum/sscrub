@@ -10,7 +10,7 @@ import {
   fmtWindow,
   spansDays,
 } from "@/lib/format";
-import { type Clip, type SinkView, clipsInRange } from "@/lib/media";
+import { type SinkView, type Span, clipsInRange } from "@/lib/media";
 import { cn } from "@/lib/utils";
 import { memo, useRef } from "react";
 
@@ -41,8 +41,8 @@ export function Coverage({
   className,
 }: {
   sinks: SinkView[];
-  /** Clips keyed by sink id (see `groupBySink`). */
-  clips: Record<string, Clip[] | undefined>;
+  /** Clips or merged spans keyed by sink id (see `groupBySink`). */
+  clips: Record<string, Span[] | undefined>;
   from: number;
   to: number;
   dimmed?: Set<string>;
@@ -228,8 +228,8 @@ const Rows = memo(function Rows({
   rowHeight,
 }: {
   sinks: SinkView[];
-  /** Clips keyed by sink id (see `groupBySink`). */
-  clips: Record<string, Clip[] | undefined>;
+  /** Clips or merged spans keyed by sink id (see `groupBySink`). */
+  clips: Record<string, Span[] | undefined>;
   from: number;
   to: number;
   dimmed?: Set<string>;
