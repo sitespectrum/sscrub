@@ -130,7 +130,7 @@ function ProjectCard({
       >
         {video.map(({ sink: s, poster }) =>
           poster ? (
-            <div key={s.id} className="relative min-h-0">
+            <div key={s.id} className="relative min-h-0 overflow-hidden">
               <Frame
                 sink={s}
                 asset={poster}
