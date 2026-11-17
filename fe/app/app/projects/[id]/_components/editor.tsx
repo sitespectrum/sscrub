@@ -15,7 +15,7 @@ import {
   hash,
 } from "@/lib/format";
 import { toast } from "@/components/ui/toast";
-import { $api } from "@/lib/api/openapi-clients";
+import { fetchClient } from "@/lib/api/openapi-clients";
 import {
   type Clip,
   type Flag,
@@ -58,11 +58,30 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toProject } from "@/lib/hooks/useMedia";
 import { useQueryClient } from "@tanstack/react-query";
 import { Monitor, type Track } from "./monitor";
 import { type ClipFilter, Timeline } from "./timeline";
 
 const MARKER_COLORS = ["#ef4444", "#f59e0b", "#22c55e", "#3b82f6", "#a855f7"];
+const HISTORY_LIMIT = 200;
+const MOD =
+  typeof navigator !== "undefined" && /Mac|iP(hone|ad)/.test(navigator.platform)
+    ? "⌘"
+    : "Ctrl+";
+
+/** One saved change: flag a clip, or add/remove a marker. */
+type Op =
+  | { kind: "flag"; clipId: string; flag: Flag | null }
+  | { kind: "addMarker"; marker: Marker }
+  | { kind: "removeMarker"; marker: Marker };
+
+/** An undoable edit, as the op that makes it and the op that reverts it. */
+interface Edit {
+  label: string;
+  redo: Op;
+  undo: Op;
+}
 
 /**
  * Multicam culling editor. Expects loaded data; remount (via `key`) when the
@@ -128,31 +147,122 @@ export function Editor({
   const [markers, setMarkers] = useState<Marker[]>(project.markers);
 
   const queryClient = useQueryClient();
-  // Edits apply locally right away; a failed save is reverted per call.
-  const onSaveError = (what: string) => (e: { error?: string } | undefined) =>
-    toast.add({
-      type: "error",
-      title: `Could not save ${what}`,
-      description: e?.error,
-    });
-  const putFlag = $api.useMutation("put", "/api/projects/{id}/flags/{assetId}", {
-    onError: onSaveError("flag"),
-  });
-  const postMarker = $api.useMutation("post", "/api/projects/{id}/markers", {
-    onError: onSaveError("marker"),
-  });
-  const deleteMarker = $api.useMutation(
-    "delete",
-    "/api/projects/{id}/markers/{markerId}",
-    { onError: onSaveError("marker") },
-  );
-  useEffect(
-    () => () => {
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
       // the project list shows flag counts and last-edited times
       queryClient.invalidateQueries({ queryKey: ["get", "/api/projects"] });
-    },
-    [queryClient],
-  );
+    };
+  }, [queryClient]);
+
+  // Edits apply locally right away and are saved in order through one queue,
+  // so an undo can never overtake the change it reverts. After a failed save
+  // the rest of the queue is skipped and the editor reloads flags and markers
+  // from the server (retrying until it answers), dropping the history.
+  const saves = useRef<Promise<unknown>>(Promise.resolve());
+  const outOfSync = useRef(false);
+  const [undoStack, setUndoStack] = useState<Edit[]>([]);
+  const [redoStack, setRedoStack] = useState<Edit[]>([]);
+
+  const resync = async () => {
+    for (let attempt = 0; mounted.current; attempt++) {
+      const res = await fetchClient
+        .GET("/api/projects/{id}", { params: { path: { id: project.id } } })
+        .catch(() => undefined);
+      if (res?.data && mounted.current) {
+        const p = toProject(res.data);
+        setFlags(p.flags);
+        setMarkers(p.markers);
+        setUndoStack([]);
+        setRedoStack([]);
+        outOfSync.current = false;
+        return;
+      }
+      await new Promise((r) => setTimeout(r, Math.min(30_000, 2000 * 2 ** attempt)));
+    }
+  };
+
+  const save = (what: string, request: () => Promise<{ error?: unknown }>) => {
+    saves.current = saves.current.then(async () => {
+      if (outOfSync.current) return;
+      const { error } = await request().catch((e) => ({ error: e }));
+      if (error === undefined) return;
+      outOfSync.current = true;
+      toast.add({
+        type: "error",
+        title: `Could not save ${what}`,
+        description:
+          (error as { error?: string })?.error ??
+          "Reloading the saved state from the server.",
+      });
+      void resync();
+    });
+  };
+
+  const apply = (op: Op) => {
+    switch (op.kind) {
+      case "flag":
+        setFlags((cur) => {
+          const n = { ...cur };
+          if (op.flag) n[op.clipId] = op.flag;
+          else delete n[op.clipId];
+          return n;
+        });
+        save("flag", () =>
+          fetchClient.PUT("/api/projects/{id}/flags/{assetId}", {
+            params: { path: { id: project.id, assetId: op.clipId } },
+            body: { flag: op.flag ? toApiFlag(op.flag) : null },
+          }),
+        );
+        break;
+      case "addMarker":
+        setMarkers((m) => [...m, op.marker]);
+        save("marker", () =>
+          fetchClient.PUT("/api/projects/{id}/markers/{markerId}", {
+            params: { path: { id: project.id, markerId: op.marker.id } },
+            body: {
+              time: new Date(op.marker.t).toISOString(),
+              label: op.marker.label,
+              color: op.marker.color,
+            },
+          }),
+        );
+        break;
+      case "removeMarker":
+        setMarkers((m) => m.filter((x) => x.id !== op.marker.id));
+        save("marker", () =>
+          fetchClient.DELETE("/api/projects/{id}/markers/{markerId}", {
+            params: { path: { id: project.id, markerId: op.marker.id } },
+          }),
+        );
+        break;
+    }
+  };
+
+  /** Applies a new edit and records it for undo. */
+  const commit = (edit: Edit) => {
+    apply(edit.redo);
+    setUndoStack((s) => [...s.slice(-(HISTORY_LIMIT - 1)), edit]);
+    setRedoStack([]);
+  };
+
+  const undo = () => {
+    const edit = undoStack.at(-1);
+    if (!edit) return;
+    apply(edit.undo);
+    setUndoStack((s) => s.slice(0, -1));
+    setRedoStack((s) => [...s, edit]);
+  };
+
+  const redo = () => {
+    const edit = redoStack.at(-1);
+    if (!edit) return;
+    apply(edit.redo);
+    setRedoStack((s) => s.slice(0, -1));
+    setUndoStack((s) => [...s, edit]);
+  };
 
   const seek = useCallback(
     (tt: number) => setT(Math.min(to, Math.max(from, tt))),
@@ -184,62 +294,37 @@ export function Editor({
 
   const flag = (f: Flag | null) => {
     if (!focusClip) return;
-    const id = focusClip.id;
-    const prev = flags[id];
-    const next = f && prev !== f ? f : undefined;
-    const set = (v: Flag | undefined) =>
-      setFlags((cur) => {
-        const n = { ...cur };
-        if (v) n[id] = v;
-        else delete n[id];
-        return n;
-      });
-    set(next);
-    putFlag.mutate(
-      {
-        params: { path: { id: project.id, assetId: id } },
-        body: { flag: next ? toApiFlag(next) : null },
-      },
-      { onError: () => set(prev) },
-    );
+    const clipId = focusClip.id;
+    const prev = flags[clipId] ?? null;
+    const next = f && prev !== f ? f : null;
+    if (next === prev) return;
+    commit({
+      label: next ? `${next === "pick" ? "Pick" : "Reject"} clip` : "Clear flag",
+      redo: { kind: "flag", clipId, flag: next },
+      undo: { kind: "flag", clipId, flag: prev },
+    });
   };
 
   const addMarker = () => {
-    const tempId = `new-${Date.now()}`;
     const marker: Marker = {
-      id: tempId,
+      id: crypto.randomUUID(),
       t,
       label: `Marker ${markers.length + 1}`,
       color: MARKER_COLORS[markers.length % MARKER_COLORS.length],
     };
-    setMarkers((m) => [...m, marker]);
-    postMarker.mutate(
-      {
-        params: { path: { id: project.id } },
-        body: {
-          time: new Date(marker.t).toISOString(),
-          label: marker.label,
-          color: marker.color,
-        },
-      },
-      {
-        onSuccess: (saved) =>
-          setMarkers((m) =>
-            m.map((x) => (x.id === tempId ? { ...x, id: saved.id } : x)),
-          ),
-        onError: () => setMarkers((m) => m.filter((x) => x.id !== tempId)),
-      },
-    );
+    commit({
+      label: "Add marker",
+      redo: { kind: "addMarker", marker },
+      undo: { kind: "removeMarker", marker },
+    });
   };
 
-  const removeMarker = (marker: Marker) => {
-    setMarkers((m) => m.filter((x) => x.id !== marker.id));
-    if (!marker.id.startsWith("new-"))
-      deleteMarker.mutate(
-        { params: { path: { id: project.id, markerId: marker.id } } },
-        { onError: () => setMarkers((m) => [...m, marker]) },
-      );
-  };
+  const removeMarker = (marker: Marker) =>
+    commit({
+      label: "Delete marker",
+      redo: { kind: "removeMarker", marker },
+      undo: { kind: "addMarker", marker },
+    });
 
   const toggleHidden = (id: string) =>
     setHidden((h) => {
@@ -263,6 +348,13 @@ export function Editor({
   const onKey = (e: KeyboardEvent) => {
     if (e.target instanceof HTMLInputElement) return;
     const k = e.key.toLowerCase();
+    if (e.metaKey || e.ctrlKey) {
+      if (k === "z" && !e.shiftKey) undo();
+      else if ((k === "z" && e.shiftKey) || k === "y") redo();
+      else return; // leave browser shortcuts alone
+      e.preventDefault();
+      return;
+    }
     const step = e.shiftKey ? 10_000 : 1000;
     if (k === " ") togglePlay();
     else if (k === "k") setPlaying(false);
@@ -311,10 +403,30 @@ export function Editor({
       <AppHeader
         actions={
           <div className="flex items-center gap-1 mr-1">
-            <Button variant="ghost" size="icon-sm" title="Undo">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              title={
+                undoStack.length
+                  ? `Undo ${undoStack.at(-1)!.label} (${MOD}Z)`
+                  : "Nothing to undo"
+              }
+              disabled={!undoStack.length}
+              onClick={undo}
+            >
               <Undo2Icon />
             </Button>
-            <Button variant="ghost" size="icon-sm" title="Redo">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              title={
+                redoStack.length
+                  ? `Redo ${redoStack.at(-1)!.label} (${MOD}⇧Z)`
+                  : "Nothing to redo"
+              }
+              disabled={!redoStack.length}
+              onClick={redo}
+            >
               <Redo2Icon />
             </Button>
             <span className="h-4 w-px bg-hairline mx-1" />
