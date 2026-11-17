@@ -17,3 +17,18 @@ public record SinkLibraryStats(Guid SinkId, int Count, long Size, long DurationM
 public record LibraryStatsResponse(LibraryStats Overall, List<SinkLibraryStats> BySink);
 
 public record AttentionItem(Asset Asset, string? Error, DateTime? FailedAt);
+
+public record ProjectBody(string Name, DateTime Start, DateTime End, List<Guid> SinkIds);
+public record ProjectFlagItem(Guid AssetId, ClipFlag Flag);
+public record SetFlagBody(ClipFlag? Flag);
+public record MarkerBody(DateTime Time, string Label, string Color);
+public record ProjectResponse(
+    Guid Id,
+    string Name,
+    DateTime Start,
+    DateTime End,
+    List<Guid> SinkIds,
+    DateTime CreatedAt,
+    DateTime UpdatedAt,
+    List<ProjectFlagItem> Flags,
+    List<ProjectMarker> Markers);

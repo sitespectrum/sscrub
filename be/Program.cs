@@ -26,6 +26,7 @@ app.MapGet("/", () =>
 app.MapSinkEndpoints();
 app.MapAssetAndUploadEndpoints();
 app.MapStatisticsEndpoints();
+app.MapProjectEndpoints();
 
 app.ApplyPostMapConfig();
 app.Run();

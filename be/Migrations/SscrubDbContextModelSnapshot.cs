@@ -71,6 +71,83 @@ namespace SscrubServer.Migrations
                     b.ToTable("Assets");
                 });
 
+            modelBuilder.Entity("SscrubServer.Models.Project", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("End")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.PrimitiveCollection<string>("SinkIds")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("Start")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Projects");
+                });
+
+            modelBuilder.Entity("SscrubServer.Models.ProjectFlag", b =>
+                {
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("AssetId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Flag")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("ProjectId", "AssetId");
+
+                    b.HasIndex("AssetId");
+
+                    b.ToTable("ProjectFlags");
+                });
+
+            modelBuilder.Entity("SscrubServer.Models.ProjectMarker", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Color")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("Time")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProjectId");
+
+                    b.ToTable("ProjectMarkers");
+                });
+
             modelBuilder.Entity("SscrubServer.Models.Sink", b =>
                 {
                     b.Property<Guid>("Id")
@@ -141,6 +218,43 @@ namespace SscrubServer.Migrations
                     b.Navigation("Filmstrip");
 
                     b.Navigation("Sink");
+                });
+
+            modelBuilder.Entity("SscrubServer.Models.ProjectFlag", b =>
+                {
+                    b.HasOne("SscrubServer.Models.Asset", "Asset")
+                        .WithMany()
+                        .HasForeignKey("AssetId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SscrubServer.Models.Project", "Project")
+                        .WithMany("Flags")
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Asset");
+
+                    b.Navigation("Project");
+                });
+
+            modelBuilder.Entity("SscrubServer.Models.ProjectMarker", b =>
+                {
+                    b.HasOne("SscrubServer.Models.Project", "Project")
+                        .WithMany("Markers")
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Project");
+                });
+
+            modelBuilder.Entity("SscrubServer.Models.Project", b =>
+                {
+                    b.Navigation("Flags");
+
+                    b.Navigation("Markers");
                 });
 
             modelBuilder.Entity("SscrubServer.Models.Sink", b =>
