@@ -142,23 +142,34 @@ public static class ProjectEndpoints
             return TypedResults.Created($"/api/projects/{id}/markers/{marker.Id}", marker);
         });
 
+        // Creates or updates. Lets the client pick the id, so undo/redo can
+        // delete a marker and put the same one back.
         app.MapPut("/api/projects/{id:guid}/markers/{markerId:guid}", async Task<Results<Ok<ProjectMarker>, BadRequest<ErrorResponse>, NotFound>> (
             Guid id,
             Guid markerId,
             MarkerBody body,
             SscrubDbContext db) =>
         {
-            var marker = await db.ProjectMarkers
-                .Include(x => x.Project)
-                .FirstOrDefaultAsync(x => x.Id == markerId && x.ProjectId == id);
-            if (marker is null) return TypedResults.NotFound();
+            var project = await db.Projects.FirstOrDefaultAsync(x => x.Id == id);
+            if (project is null) return TypedResults.NotFound();
             if (string.IsNullOrWhiteSpace(body.Label))
                 return TypedResults.BadRequest(new ErrorResponse("Label can not be empty"));
+
+            var marker = await db.ProjectMarkers.FirstOrDefaultAsync(x => x.Id == markerId);
+            if (marker is null)
+            {
+                marker = new ProjectMarker { Id = markerId, ProjectId = id };
+                db.ProjectMarkers.Add(marker);
+            }
+            else if (marker.ProjectId != id)
+            {
+                return TypedResults.NotFound();
+            }
 
             marker.Time = body.Time;
             marker.Label = body.Label.Trim();
             marker.Color = body.Color;
-            marker.Project.UpdatedAt = DateTime.UtcNow;
+            project.UpdatedAt = DateTime.UtcNow;
             await db.SaveChangesAsync();
 
             return TypedResults.Ok(marker);
