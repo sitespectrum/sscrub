@@ -376,7 +376,7 @@ export function Editor({
     () =>
       mediaOn
         ? {
-            mode: realtime && !stalled ? "playing" : "paused",
+            mode: !realtime ? "paused" : stalled ? "holding" : "playing",
             mix,
             onWaiting,
           }

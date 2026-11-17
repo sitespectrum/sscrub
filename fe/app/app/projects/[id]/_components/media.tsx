@@ -21,17 +21,25 @@ export const DEFAULT_MIX: TrackMix = { volume: 1, muted: false };
 
 /**
  * "playing": the clock runs at 1× and media should play along.
- * "paused": playback stopped (or is holding for buffering); media stays
- * mounted, lined up with the playhead.
+ * "holding": the clock is waiting for some clip to buffer. Clips stay where
+ * they are (no seeking), so a short hiccup doesn't cost a rebuffer.
+ * "paused": playback stopped; media stays mounted, lined up with the
+ * playhead.
  */
-export type MediaMode = "playing" | "paused";
+export type MediaMode = "playing" | "holding" | "paused";
 
 export type OnWaiting = (clipId: string, waiting: boolean) => void;
 
 /** Mount the next clip this early, so it has loaded by the time it starts. */
 const PRELOAD_MS = 3000;
-/** Past this drift, seek; below it, nudge the playback rate instead. */
-const SEEK_DRIFT_S = 0.5;
+/**
+ * Past this drift, seek; below it, nudge the playback rate instead. Seeking
+ * HEVC can rebuffer for seconds, and Firefox's currentTime jumps in uneven
+ * steps, so this is generous.
+ */
+const SEEK_DRIFT_S = 1;
+/** Drift that is left alone, so the pitch doesn't wobble. */
+const DEADBAND_S = 0.1;
 /** Give up on a clip that has not become playable in this long. */
 const STALL_TIMEOUT_MS = 10_000;
 
@@ -107,12 +115,19 @@ function ClipMedia({
 
   // Readiness: a started clip blocks the clock until it can play through.
   const reported = useRef(false);
+  // set by a "waiting" event, i.e. the element ran out of data while playing
+  const stuck = useRef(false);
   const stallTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const report = () => {
     const el = ref.current;
     const { started, failed, onWaiting } = live.current;
+    // A playing element's readyState can dip for a frame without it actually
+    // stopping, so while it plays only its own "waiting" event counts.
     const waiting =
-      !!el && started && !failed && (el.readyState < 3 || el.seeking);
+      !!el &&
+      started &&
+      !failed &&
+      (el.seeking || stuck.current || (el.paused && el.readyState < 3));
     if (waiting === reported.current) return;
     reported.current = waiting;
     onWaiting(clip.id, waiting);
@@ -133,14 +148,28 @@ function ClipMedia({
       setHasFrame(true);
       update();
     };
+    const stop = () => {
+      stuck.current = true;
+      update();
+    };
+    const go = () => {
+      stuck.current = false;
+      update();
+    };
     const fail = () => setFailed(true);
-    const events = ["canplay", "canplaythrough", "waiting", "seeking", "stalled"];
+    const events = ["canplay", "canplaythrough", "seeking", "pause"];
     for (const e of events) el.addEventListener(e, update);
+    el.addEventListener("waiting", stop);
+    for (const e of ["playing", "timeupdate", "seeked"])
+      el.addEventListener(e, go);
     for (const e of ["loadeddata", "seeked", "playing"])
       el.addEventListener(e, frame);
     el.addEventListener("error", fail);
     return () => {
       for (const e of events) el.removeEventListener(e, update);
+      el.removeEventListener("waiting", stop);
+      for (const e of ["playing", "timeupdate", "seeked"])
+        el.removeEventListener(e, go);
       for (const e of ["loadeddata", "seeked", "playing"])
         el.removeEventListener(e, frame);
       el.removeEventListener("error", fail);
@@ -169,7 +198,10 @@ function ClipMedia({
         if (!el.seeking) el.currentTime = offset;
       } else {
         // catch up (or wait) over about a second, in coarse steps
-        const r = Math.round(Math.min(1.1, Math.max(0.9, 1 - drift)) * 50) / 50;
+        const r =
+          Math.abs(drift) < DEADBAND_S
+            ? 1
+            : Math.round(Math.min(1.1, Math.max(0.9, 1 - drift)) * 50) / 50;
         if (el.playbackRate !== r) el.playbackRate = r;
       }
       if (el.paused)
@@ -177,6 +209,12 @@ function ClipMedia({
           // a pause() interrupting play() is expected; anything else is not
           if (e.name !== "AbortError") setFailed(true);
         });
+    } else if (mode === "holding") {
+      // The buffering clip keeps trying to play and catches up on its own;
+      // the others wait in place.
+      if (reported.current) {
+        if (el.paused) el.play().catch(() => {});
+      } else if (!el.paused) el.pause();
     } else {
       if (!el.paused) el.pause();
       if (Math.abs(drift) > 0.04 && !el.seeking) el.currentTime = offset;
