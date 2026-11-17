@@ -1,13 +1,12 @@
 "use client";
 
-import { Meters } from "@/app/app/_components/frame";
+import { Frame, Meters, SinkBadge } from "@/app/app/_components/frame";
 import { AppHeader } from "@/app/app/_components/header";
 import { Gutter, Panel, Segmented, Stat } from "@/app/app/_components/panel";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
 import { ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import {
-  MIN_MS,
   fmtClock,
   fmtDate,
   fmtDur,
@@ -15,13 +14,18 @@ import {
   fmtTC,
   hash,
 } from "@/lib/format";
+import { toast } from "@/components/ui/toast";
+import { $api } from "@/lib/api/openapi-clients";
 import {
   type Clip,
+  type Flag,
+  type Marker,
   type Project,
   type SinkView,
   clipAt,
   clipsInRange,
   groupBySink,
+  toApiFlag,
 } from "@/lib/media";
 import { cn } from "@/lib/utils";
 import {
@@ -54,8 +58,9 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { type Flag, Monitor, type Track } from "./monitor";
-import { type ClipFilter, type Marker, Timeline } from "./timeline";
+import { useQueryClient } from "@tanstack/react-query";
+import { Monitor, type Track } from "./monitor";
+import { type ClipFilter, Timeline } from "./timeline";
 
 const MARKER_COLORS = ["#ef4444", "#f59e0b", "#22c55e", "#3b82f6", "#a855f7"];
 
@@ -99,15 +104,17 @@ export function Editor({
     [tracks, from, to],
   );
 
-  // start where the most sinks are rolling at once
+  // Start where the most sinks are rolling at once. That count only changes
+  // at a clip start, so those are the only candidates worth checking.
   const [t, setT] = useState(() => {
     let best = from;
-    let bestN = -1;
-    for (let tt = from; tt < to; tt += MIN_MS) {
+    let bestN = 0;
+    for (const c of tracks.flatMap((tr) => tr.clips)) {
+      const tt = Math.max(from, c.start);
       const n = tracks.filter((tr) => clipAt(tr.clips, tt)).length;
       if (n > bestN) [best, bestN] = [tt, n];
     }
-    return best + 20_000;
+    return Math.min(to, best + 1000);
   });
   const [playing, setPlaying] = useState(false);
   const [rate, setRate] = useState(1);
@@ -117,38 +124,35 @@ export function Editor({
   const [filter, setFilter] = useState<ClipFilter>("all");
   const [leftTab, setLeftTab] = useState<"sinks" | "markers">("sinks");
   const [selectedClip, setSelectedClip] = useState<string | null>(null);
-  const [flags, setFlags] = useState<Record<string, Flag>>(() => {
-    // pretend some culling already happened
-    const f: Record<string, Flag> = {};
-    for (const tr of tracks)
-      for (const c of tr.clips.slice(0, Math.ceil(tr.clips.length / 3))) {
-        const h = hash(c.id) % 10;
-        if (h < 4) f[c.id] = "pick";
-        else if (h < 7) f[c.id] = "reject";
-      }
-    return f;
+  const [flags, setFlags] = useState<Record<string, Flag>>(project.flags);
+  const [markers, setMarkers] = useState<Marker[]>(project.markers);
+
+  const queryClient = useQueryClient();
+  // Edits apply locally right away; a failed save is reverted per call.
+  const onSaveError = (what: string) => (e: { error?: string } | undefined) =>
+    toast.add({
+      type: "error",
+      title: `Could not save ${what}`,
+      description: e?.error,
+    });
+  const putFlag = $api.useMutation("put", "/api/projects/{id}/flags/{assetId}", {
+    onError: onSaveError("flag"),
   });
-  const [markers, setMarkers] = useState<Marker[]>(() => [
-    {
-      id: "m1",
-      t: from + 22 * MIN_MS,
-      label: "Guests arriving",
-      color: MARKER_COLORS[3],
+  const postMarker = $api.useMutation("post", "/api/projects/{id}/markers", {
+    onError: onSaveError("marker"),
+  });
+  const deleteMarker = $api.useMutation(
+    "delete",
+    "/api/projects/{id}/markers/{markerId}",
+    { onError: onSaveError("marker") },
+  );
+  useEffect(
+    () => () => {
+      // the project list shows flag counts and last-edited times
+      queryClient.invalidateQueries({ queryKey: ["get", "/api/projects"] });
     },
-    { id: "m2", t: from + 61 * MIN_MS, label: "Vows", color: MARKER_COLORS[0] },
-    {
-      id: "m3",
-      t: from + 74 * MIN_MS,
-      label: "First kiss",
-      color: MARKER_COLORS[0],
-    },
-    {
-      id: "m4",
-      t: from + 128 * MIN_MS,
-      label: "Group photo",
-      color: MARKER_COLORS[2],
-    },
-  ]);
+    [queryClient],
+  );
 
   const seek = useCallback(
     (tt: number) => setT(Math.min(to, Math.max(from, tt))),
@@ -180,24 +184,62 @@ export function Editor({
 
   const flag = (f: Flag | null) => {
     if (!focusClip) return;
-    setFlags((cur) => {
-      const n = { ...cur };
-      if (f && cur[focusClip.id] !== f) n[focusClip.id] = f;
-      else delete n[focusClip.id];
-      return n;
-    });
+    const id = focusClip.id;
+    const prev = flags[id];
+    const next = f && prev !== f ? f : undefined;
+    const set = (v: Flag | undefined) =>
+      setFlags((cur) => {
+        const n = { ...cur };
+        if (v) n[id] = v;
+        else delete n[id];
+        return n;
+      });
+    set(next);
+    putFlag.mutate(
+      {
+        params: { path: { id: project.id, assetId: id } },
+        body: { flag: next ? toApiFlag(next) : null },
+      },
+      { onError: () => set(prev) },
+    );
   };
 
-  const addMarker = () =>
-    setMarkers((m) => [
-      ...m,
+  const addMarker = () => {
+    const tempId = `new-${Date.now()}`;
+    const marker: Marker = {
+      id: tempId,
+      t,
+      label: `Marker ${markers.length + 1}`,
+      color: MARKER_COLORS[markers.length % MARKER_COLORS.length],
+    };
+    setMarkers((m) => [...m, marker]);
+    postMarker.mutate(
       {
-        id: `m${Date.now()}`,
-        t,
-        label: `Marker ${m.length + 1}`,
-        color: MARKER_COLORS[m.length % MARKER_COLORS.length],
+        params: { path: { id: project.id } },
+        body: {
+          time: new Date(marker.t).toISOString(),
+          label: marker.label,
+          color: marker.color,
+        },
       },
-    ]);
+      {
+        onSuccess: (saved) =>
+          setMarkers((m) =>
+            m.map((x) => (x.id === tempId ? { ...x, id: saved.id } : x)),
+          ),
+        onError: () => setMarkers((m) => m.filter((x) => x.id !== tempId)),
+      },
+    );
+  };
+
+  const removeMarker = (marker: Marker) => {
+    setMarkers((m) => m.filter((x) => x.id !== marker.id));
+    if (!marker.id.startsWith("new-"))
+      deleteMarker.mutate(
+        { params: { path: { id: project.id, markerId: marker.id } } },
+        { onError: () => setMarkers((m) => [...m, marker]) },
+      );
+  };
 
   const toggleHidden = (id: string) =>
     setHidden((h) => {
@@ -364,20 +406,33 @@ export function Editor({
                     {[...markers]
                       .sort((a, b) => a.t - b.t)
                       .map((m) => (
-                        <button
+                        <div
                           key={m.id}
-                          onClick={() => seek(m.t)}
-                          className="flex items-center gap-2.5 rounded-md px-2 h-8 text-xs text-left transition-colors hover:bg-white/4"
+                          className="group/marker flex items-center rounded-md transition-colors hover:bg-white/4"
                         >
-                          <span
-                            className="w-0.75 h-4 rounded-full"
-                            style={{ background: m.color }}
-                          />
-                          <span className="flex-1 truncate">{m.label}</span>
-                          <span className="tc text-[0.65rem] text-muted-foreground">
-                            {fmtClock(m.t)}
-                          </span>
-                        </button>
+                          <button
+                            onClick={() => seek(m.t)}
+                            className="flex-1 min-w-0 flex items-center gap-2.5 px-2 h-8 text-xs text-left"
+                          >
+                            <span
+                              className="w-0.75 h-4 rounded-full shrink-0"
+                              style={{ background: m.color }}
+                            />
+                            <span className="flex-1 truncate">{m.label}</span>
+                            <span className="tc text-[0.65rem] text-muted-foreground">
+                              {fmtClock(m.t)}
+                            </span>
+                          </button>
+                          <Button
+                            size="icon-xs"
+                            variant="ghost"
+                            title="Delete marker"
+                            className="mr-1 opacity-0 group-hover/marker:opacity-100 focus-visible:opacity-100"
+                            onClick={() => removeMarker(m)}
+                          >
+                            <XIcon />
+                          </Button>
+                        </div>
                       ))}
                   </div>
                 )}
@@ -982,13 +1037,13 @@ function Inspector({
   return (
     <div className="p-3 flex flex-col gap-4">
       <div className="relative rounded-[3px] overflow-hidden ring-1 ring-white/8">
-        {/* <Frame
+        <Frame
           sink={sink}
-          clip={clip}
+          asset={clip.asset}
           t={inClip ? t : clip.start + clip.duration / 2}
           live
           className="aspect-video"
-        /> */}
+        />
         <div className="absolute bottom-0 inset-x-0 h-0.75 bg-black/50">
           <div
             className="h-full bg-playhead"
@@ -998,7 +1053,7 @@ function Inspector({
       </div>
 
       <div className="flex items-start gap-2.5">
-        {/* <SinkBadge sink={sink} /> */}
+        <SinkBadge sink={sink} />
         <div className="min-w-0 flex-1">
           <div className="tc text-[0.8rem] font-medium truncate">
             {clip.fileName}
@@ -1052,8 +1107,7 @@ function Inspector({
 
       <div className="flex flex-col gap-1.5">
         <div className="eyebrow mb-0.5">File</div>
-        <Stat label="Format" value={clip.codec} />
-        <Stat label="Resolution" value={clip.resolution} />
+        <Stat label="Type" value={clip.asset.contentType || "—"} />
         <Stat label="Size" value={fmtSize(clip.size)} />
         <Stat
           label="Status"

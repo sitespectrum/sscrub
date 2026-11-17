@@ -1,8 +1,9 @@
 "use client";
 
+import { Frame } from "@/app/app/_components/frame";
 import { TrackToggle } from "@/app/app/_components/panel";
 import { fmtClock, fmtTC, hash } from "@/lib/format";
-import { type Clip, type SinkView } from "@/lib/media";
+import { type Clip, type Marker, type SinkView } from "@/lib/media";
 import { cn } from "@/lib/utils";
 import {
   CheckIcon,
@@ -23,12 +24,7 @@ import {
 } from "react";
 import type { Flag, Track } from "./monitor";
 
-export interface Marker {
-  id: string;
-  t: number;
-  label: string;
-  color: string;
-}
+export type { Marker };
 
 export type ClipFilter = "all" | "unreviewed" | "pick" | "reject";
 
@@ -537,9 +533,9 @@ const Thumbs = memo(function Thumbs({
           )}
           style={{ width: tw }}
         >
-          {/* <Frame
+          <Frame
             sink={sink}
-            clip={clip}
+            asset={clip.asset}
             t={
               clip.start +
               clip.duration *
@@ -548,7 +544,7 @@ const Thumbs = memo(function Thumbs({
             grain={false}
             thumb
             className="size-full"
-          /> */}
+          />
         </div>
       ))}
     </div>

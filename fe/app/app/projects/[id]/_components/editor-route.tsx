@@ -1,7 +1,8 @@
 "use client";
 
 import { buttonVariants } from "@/components/ui/button";
-import { useClips, useProject, useSinks } from "@/lib/placeholder/hooks";
+import { Spinner } from "@/components/ui/spinner";
+import { useClips, useProject, useSinks } from "@/lib/hooks/useMedia";
 import Link from "next/link";
 import { Editor } from "./editor";
 
@@ -10,7 +11,13 @@ export function EditorRoute({ id }: { id: string }) {
   const sinks = useSinks();
   const clips = useClips();
 
-  if (project.isLoading || sinks.isLoading || clips.isLoading) return null;
+  if (project.isLoading || sinks.isLoading || clips.isLoading) {
+    return (
+      <div className="flex-1 flex items-center justify-center text-muted-foreground">
+        <Spinner />
+      </div>
+    );
+  }
 
   if (!project.data) {
     return (

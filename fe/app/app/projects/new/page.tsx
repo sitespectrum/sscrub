@@ -1,12 +1,26 @@
 "use client";
 
 import { Coverage } from "@/app/app/_components/coverage";
+import { SinkBadge } from "@/app/app/_components/frame";
 import { AppHeader } from "@/app/app/_components/header";
 import { Stat } from "@/app/app/_components/panel";
 import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Spinner } from "@/components/ui/spinner";
+import { toast } from "@/components/ui/toast";
+import { $api } from "@/lib/api/openapi-clients";
 import {
+  DAY_MS,
   HOUR_MS,
   MIN_MS,
   fmtClock,
@@ -15,47 +29,108 @@ import {
   fmtSize,
 } from "@/lib/format";
 import { clipsInRange, groupBySink, hourBounds } from "@/lib/media";
-import { useClips, useSinks } from "@/lib/placeholder/hooks";
+import { useClips, useSinks } from "@/lib/hooks/useMedia";
 import { cn } from "@/lib/utils";
 import {
   CalendarIcon,
   CheckIcon,
+  ChevronDownIcon,
   ChevronRightIcon,
   InfoIcon,
   MagnetIcon,
   SunIcon,
 } from "lucide-react";
 import Link from "next/link";
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
-const DAY_MS = 24 * HOUR_MS;
 const toInput = (t: number) => fmtClock(t, false);
 
 export default function NewProjectPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { data: sinks } = useSinks();
   const { data: clips } = useClips();
-  const clipsBySink = useMemo(() => groupBySink(clips ?? []), [clips]);
+
+  // UTC days that have footage, newest first, with their clip counts.
+  const days = useMemo(() => {
+    const counts = new Map<number, number>();
+    for (const c of clips ?? []) {
+      const d = Math.floor(c.start / DAY_MS) * DAY_MS;
+      counts.set(d, (counts.get(d) ?? 0) + 1);
+    }
+    return [...counts].sort((x, y) => y[0] - x[0]);
+  }, [clips]);
+
+  // Defaults (latest day, every sink, the whole day) apply until the user
+  // picks something, since the data loads after the first render.
+  const [dayPick, setDayPick] = useState<number | null>(null);
+  const midnight =
+    dayPick ?? days[0]?.[0] ?? hourBounds([])[0];
+  const dayClips = useMemo(
+    () => clipsInRange(clips ?? [], midnight, midnight + DAY_MS),
+    [clips, midnight],
+  );
+  const clipsBySink = useMemo(() => groupBySink(dayClips), [dayClips]);
 
   // Chart spans the hours that have footage on the shoot day.
-  // TODO: the "Shoot date" picker should choose which day's footage to show.
-  const [DAY_FROM, DAY_TO] = useMemo(() => hourBounds(clips ?? []), [clips]);
-  const midnight = Math.floor(DAY_FROM / DAY_MS) * DAY_MS;
+  const [DAY_FROM, DAY_TO] = useMemo(() => hourBounds(dayClips), [dayClips]);
   const fromInput = (v: string) => {
     const [h, m] = v.split(":").map(Number);
     return midnight + (h || 0) * HOUR_MS + (m || 0) * MIN_MS;
   };
 
   const [name, setName] = useState("");
-  const [selected, setSelected] = useState(
-    () => new Set(sinks?.map((s) => s.id)),
+  const [selectedPick, setSelected] = useState<Set<string> | null>(null);
+  const selected = useMemo(
+    () => selectedPick ?? new Set(sinks?.map((s) => s.id)),
+    [selectedPick, sinks],
   );
-  const [range, setRange] = useState(() => ({ start: DAY_FROM, end: DAY_TO }));
+  const [rangePick, setRangePick] = useState<{
+    start: number;
+    end: number;
+  } | null>(null);
+  const range = useMemo(
+    () => rangePick ?? { start: DAY_FROM, end: DAY_TO },
+    [rangePick, DAY_FROM, DAY_TO],
+  );
+  const setRange = (
+    r:
+      | { start: number; end: number }
+      | ((r: { start: number; end: number }) => { start: number; end: number }),
+  ) => setRangePick(typeof r === "function" ? r(range) : r);
+  const pickDay = (d: number) => {
+    setDayPick(d);
+    setRangePick(null);
+  };
+
+  const create = $api.useMutation("post", "/api/projects", {
+    onSuccess: (p) => {
+      queryClient.invalidateQueries({ queryKey: ["get", "/api/projects"] });
+      router.push(`/app/projects/${p.id}`);
+    },
+    onError: (e) =>
+      toast.add({
+        type: "error",
+        title: "Could not create project",
+        description: e?.error,
+      }),
+  });
+  const submit = () =>
+    create.mutate({
+      body: {
+        name: name.trim() || "Untitled project",
+        start: new Date(range.start).toISOString(),
+        end: new Date(range.end).toISOString(),
+        // keep the chart's order, which becomes the track order
+        sinkIds: (sinks ?? []).filter((s) => selected.has(s.id)).map((s) => s.id),
+      },
+    });
 
   const toggle = (id: string) =>
-    setSelected((s) => {
-      const n = new Set(s);
+    setSelected(() => {
+      const n = new Set(selected);
       if (n.has(id)) n.delete(id);
       else n.add(id);
       return n;
@@ -114,13 +189,46 @@ export default function NewProjectPage() {
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <Label>Shoot date</Label>
-                    <Button
-                      variant="outline"
-                      className="h-7 justify-start w-44"
-                    >
-                      <CalendarIcon data-icon="inline-start" />{" "}
-                      {fmtDate(range.start)}
-                    </Button>
+<DropdownMenu>
+                      <DropdownMenuTrigger
+                        render={
+                          <Button
+                            variant="outline"
+                            className="h-7 justify-start w-44"
+                            disabled={!days.length}
+                          />
+                        }
+                      >
+                        <CalendarIcon data-icon="inline-start" />
+                        <span className="flex-1 text-left">
+                          {fmtDate(midnight, true)}
+                        </span>
+                        <ChevronDownIcon
+                          data-icon="inline-end"
+                          className="opacity-60"
+                        />
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent className="w-52 max-h-80">
+                        <DropdownMenuGroup>
+                          <DropdownMenuLabel>Days with footage</DropdownMenuLabel>
+                          <DropdownMenuRadioGroup
+                            value={midnight}
+                            onValueChange={(v) => pickDay(v as number)}
+                          >
+                            {days.map(([d, n]) => (
+                              <DropdownMenuRadioItem key={d} value={d} closeOnClick>
+                                <span className="flex-1">
+                                  {fmtDate(d, true)}
+                                </span>
+                                <span className="tc text-[0.65rem] text-muted-foreground">
+                                  {n}
+                                </span>
+                              </DropdownMenuRadioItem>
+                            ))}
+                          </DropdownMenuRadioGroup>
+                        </DropdownMenuGroup>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 </div>
               </Section>
@@ -216,7 +324,7 @@ export default function NewProjectPage() {
                               <CheckIcon className="size-2.5" strokeWidth={3} />
                             )}
                           </span>
-                          {/* <SinkBadge sink={s} size="sm" /> */}
+                          <SinkBadge sink={s} size="sm" />
                           <span className="flex-1 min-w-0">
                             <span className="block text-xs font-medium truncate">
                               {s.name}
@@ -297,10 +405,12 @@ export default function NewProjectPage() {
                 <Button
                   size="lg"
                   className="w-full"
-                  disabled={!selected.size}
-                  // TODO(data): create the project, then open it by its new id
-                  onClick={() => router.push("/app/projects/ceremony")}
+                  disabled={
+                    !selected.size || range.end <= range.start || create.isPending
+                  }
+                  onClick={submit}
                 >
+                  {create.isPending && <Spinner data-icon="inline-start" />}
                   Create & open editor
                 </Button>
                 <Link

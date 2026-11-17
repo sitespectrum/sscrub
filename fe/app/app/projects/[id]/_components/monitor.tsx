@@ -4,7 +4,13 @@ import { cn } from "@/lib/utils";
 import { ArrowRightIcon, CheckIcon, LayoutGridIcon, XIcon } from "lucide-react";
 import { Frame } from "@/app/app/_components/frame";
 import { fmtDur, fmtTC } from "@/lib/format";
-import { type Clip, type SinkView, clipAt, nextClip } from "@/lib/media";
+import {
+  type Clip,
+  type Flag,
+  type SinkView,
+  clipAt,
+  nextClip,
+} from "@/lib/media";
 
 export interface Track {
   sink: SinkView;
@@ -12,7 +18,7 @@ export interface Track {
   index: number;
 }
 
-export type Flag = "pick" | "reject";
+export type { Flag };
 
 export function Monitor({
   tracks,
@@ -143,16 +149,15 @@ function Tile({
         style={{ width: "min(100cqw, calc(100cqh * 16 / 9))" }}
       >
         {clip ? (
-          // <Frame
-          //   sink={sink}
-          //   clip={clip}
-          //   t={t}
-          //   grain={!sm}
-          //   thumb={sm}
-          //   live={!sm}
-          //   className="absolute inset-0"
-          // />
-          <></>
+          <Frame
+            sink={sink}
+            asset={clip.asset}
+            t={t}
+            grain={!sm}
+            thumb={sm}
+            live={!sm}
+            className="absolute inset-0"
+          />
         ) : (
           <div className="absolute inset-0 hatch flex flex-col items-center justify-center gap-2">
             {!sm && (

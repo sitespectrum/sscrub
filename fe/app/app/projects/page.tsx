@@ -3,8 +3,23 @@
 import { Coverage } from "@/app/app/_components/coverage";
 import { Frame } from "@/app/app/_components/frame";
 import { AppHeader } from "@/app/app/_components/header";
-import { buttonVariants } from "@/components/ui/button";
-import { fmtClock, fmtDate, fmtDur, hash } from "@/lib/format";
+import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
+import { toast } from "@/components/ui/toast";
+import { $api } from "@/lib/api/openapi-clients";
+import { fmtAgo, fmtClock, fmtDate, fmtDur } from "@/lib/format";
+import { useClips, useProjects, useSinks } from "@/lib/hooks/useMedia";
 import {
   type Clip,
   type Project,
@@ -13,28 +28,29 @@ import {
   groupBySink,
   nextClip,
 } from "@/lib/media";
-import { useClips, useProjects, useSinks } from "@/lib/placeholder/hooks";
 import { cn } from "@/lib/utils";
-import { PlusIcon } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { PlusIcon, Trash2Icon } from "lucide-react";
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 export default function ProjectsPage() {
-  const { data: projects } = useProjects();
-  const { data: sinks } = useSinks();
-  const { data: clips } = useClips();
+  const projects = useProjects();
+  const sinks = useSinks();
+  const clips = useClips();
   const sinkById = useMemo(
-    () => new Map(sinks?.map((s) => [s.id, s])),
-    [sinks],
+    () => new Map(sinks.data?.map((s) => [s.id, s])),
+    [sinks.data],
   );
-  const clipsBySink = useMemo(() => groupBySink(clips ?? []), [clips]);
+  const clipsBySink = useMemo(() => groupBySink(clips.data ?? []), [clips.data]);
+  const loading = projects.isLoading || sinks.isLoading || clips.isLoading;
 
   return (
     <div className="flex-1 min-h-0 flex flex-col">
       <AppHeader active="projects" />
       <div className="flex-1 overflow-y-auto">
-        <div className="max-w-6xl mx-auto px-6 py-8">
-          <div className="flex items-end justify-between mb-6">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
+          <div className="flex items-end justify-between gap-4 mb-6">
             <div>
               <h1 className="text-xl font-semibold tracking-tight">Projects</h1>
               <p className="text-xs text-muted-foreground mt-1">
@@ -50,11 +66,23 @@ export default function ProjectsPage() {
             </Link>
           </div>
 
-          <div className="grid gap-5 grid-cols-[repeat(auto-fill,minmax(320px,1fr))]">
-            {projects?.map((p) => (
-              // <ProjectCard key={p.id} project={p} sinkById={sinkById} clipsBySink={clipsBySink} />
-              <></>
-            ))}
+          {projects.error && (
+            <p className="mb-5 text-xs text-reject">Could not load projects.</p>
+          )}
+
+          <div className="grid gap-5 grid-cols-[repeat(auto-fill,minmax(min(320px,100%),1fr))]">
+            {loading
+              ? Array.from({ length: 3 }, (_, i) => (
+                  <Skeleton key={i} className="rounded-lg min-h-72" />
+                ))
+              : projects.data?.map((p) => (
+                  <ProjectCard
+                    key={p.id}
+                    project={p}
+                    sinkById={sinkById}
+                    clipsBySink={clipsBySink}
+                  />
+                ))}
             <Link
               href="/app/projects/new"
               className="rounded-lg border border-dashed border-white/10 flex flex-col items-center justify-center gap-3 text-xs text-muted-foreground transition-colors hover:text-foreground hover:border-primary/60 hover:bg-primary/4 min-h-72"
@@ -88,16 +116,19 @@ function ProjectCard({
   const sinks = p.sinkIds.flatMap((id) => sinkById.get(id) ?? []);
   const video = sinks.filter((s) => s.kind !== "audio").slice(0, 4);
   const posterT = p.start + (p.end - p.start) * 0.4;
-  const clipCount = sinks.reduce(
-    (a, s) => a + clipsInRange(clipsBySink[s.id] ?? [], p.start, p.end).length,
-    0,
+  const inRange = sinks.flatMap((s) =>
+    clipsInRange(clipsBySink[s.id] ?? [], p.start, p.end),
   );
-  const culled = 0.2 + (hash(p.id) % 60) / 100;
+  const clipCount = inRange.length;
+  const culled = clipCount
+    ? inRange.filter((c) => p.flags[c.id]).length / clipCount
+    : 0;
 
   return (
+    <div className="group relative">
     <Link
       href={`/app/projects/${p.id}`}
-      className="group flex flex-col rounded-lg bg-panel ring-1 ring-hairline overflow-hidden transition-shadow hover:ring-white/20 hover:shadow-xl hover:shadow-black/40"
+      className="flex flex-col h-full rounded-lg bg-panel ring-1 ring-hairline overflow-hidden transition-shadow hover:ring-white/20 hover:shadow-xl hover:shadow-black/40"
     >
       <div
         className={cn(
@@ -116,12 +147,13 @@ function ProjectCard({
             cs[0];
           return clip ? (
             <div key={s.id} className="relative min-h-0">
-              {/* <Frame
+              <Frame
                 sink={s}
-                clip={clip}
+                asset={clip.asset}
                 t={Math.max(posterT, clip.start)}
+                thumb
                 className="absolute inset-0 transition-transform duration-500 group-hover:scale-[1.03]"
-              /> */}
+              />
               <span className="absolute bottom-1 left-1 rounded-[3px] bg-black/60 px-1 text-[0.55rem] text-white/80">
                 {s.name}
               </span>
@@ -143,7 +175,7 @@ function ProjectCard({
             </div>
           </div>
           <span className="tc text-[0.65rem] text-muted-foreground whitespace-nowrap">
-            {p.updated}
+            {fmtAgo(p.updatedAt)}
           </span>
         </div>
         <Coverage
@@ -183,5 +215,61 @@ function ProjectCard({
         </div>
       </div>
     </Link>
+    <DeleteProjectButton project={p} />
+    </div>
+  );
+}
+
+function DeleteProjectButton({ project }: { project: Project }) {
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const del = $api.useMutation("delete", "/api/projects/{id}", {
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["get", "/api/projects"] });
+      setOpen(false);
+    },
+    onError: () =>
+      toast.add({ type: "error", title: "Could not delete project" }),
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !del.isPending && setOpen(o)}>
+      <DialogTrigger
+        render={
+          <Button
+            size="icon-sm"
+            variant="secondary"
+            title="Delete project"
+            className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 data-popup-open:opacity-100"
+          />
+        }
+      >
+        <Trash2Icon />
+      </DialogTrigger>
+      <DialogContent showCloseButton={false}>
+        <DialogHeader>
+          <DialogTitle>Delete “{project.name}”?</DialogTitle>
+          <DialogDescription>
+            Its picks, rejects and markers are removed. The footage stays in
+            the library.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <DialogClose
+            render={<Button variant="outline" disabled={del.isPending} />}
+          >
+            Cancel
+          </DialogClose>
+          <Button
+            variant="destructive"
+            disabled={del.isPending}
+            onClick={() => del.mutate({ params: { path: { id: project.id } } })}
+          >
+            {del.isPending && <Spinner data-icon="inline-start" />}
+            Delete project
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
