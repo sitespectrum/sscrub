@@ -1,9 +1,31 @@
 "use client";
 
-import { HOUR_MS, MIN_MS, fmtClock, fmtDur } from "@/lib/format";
+import {
+  DAY_MS,
+  HOUR_MS,
+  MIN_MS,
+  fmtClock,
+  fmtDate,
+  fmtDur,
+  fmtWindow,
+  spansDays,
+} from "@/lib/format";
 import { type Clip, type SinkView, clipsInRange } from "@/lib/media";
 import { cn } from "@/lib/utils";
 import { memo, useRef } from "react";
+
+const STEPS = [1, 2, 3, 6, 12, 24].map((h) => h * HOUR_MS);
+
+/** Axis ticks every 1–24h, so a multi-day window keeps about a dozen labels. */
+function axisTicks(from: number, to: number, max = 12) {
+  const step = STEPS.find((s) => (to - from) / s <= max) ?? DAY_MS;
+  const out: number[] = [];
+  for (let h = Math.ceil(from / step) * step; h <= to; h += step) out.push(h);
+  return out;
+}
+
+const tickLabel = (t: number) =>
+  t % DAY_MS === 0 ? fmtDate(t).replace(/^\w+, /, "") : fmtClock(t, false);
 
 export function Coverage({
   sinks,
@@ -38,9 +60,7 @@ export function Coverage({
   const span = to - from;
   const pct = (t: number) => `${((t - from) / span) * 100}%`;
   const area = useRef<HTMLDivElement>(null);
-  const hours: number[] = [];
-  for (let h = Math.ceil(from / HOUR_MS) * HOUR_MS; h <= to; h += HOUR_MS)
-    hours.push(h);
+  const ticks = axisTicks(from, to);
 
   const startDrag =
     (mode: "move" | "start" | "end" | "new") => (e: React.PointerEvent) => {
@@ -167,7 +187,9 @@ export function Coverage({
                   </div>
                 ))}
                 <div className="absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-[4px] bg-primary px-1.5 py-px text-[0.6rem] font-medium text-primary-foreground tc shadow">
-                  {fmtClock(brush.start, false)} – {fmtClock(brush.end, false)}{" "}
+                  {spansDays(brush.start, brush.end)
+                    ? fmtWindow(brush.start, brush.end)
+                    : `${fmtClock(brush.start, false)} – ${fmtClock(brush.end, false)}`}{" "}
                   · {fmtDur(brush.end - brush.start)}
                 </div>
               </div>
@@ -176,13 +198,17 @@ export function Coverage({
         </div>
         {showAxis && (
           <div className="relative h-4 mt-2 text-[0.6rem] text-muted-foreground/80 tc">
-            {hours.map((h, i) => (
+            {ticks.map((h, i) => (
               <span
                 key={h}
-                className={cn("absolute", i === 0 ? "" : "-translate-x-1/2")}
+                className={cn(
+                  "absolute whitespace-nowrap",
+                  i === 0 ? "" : "-translate-x-1/2",
+                  h % DAY_MS === 0 && "text-foreground/80",
+                )}
                 style={{ left: pct(h) }}
               >
-                {fmtClock(h, false)}
+                {tickLabel(h)}
               </span>
             ))}
           </div>
@@ -211,15 +237,15 @@ const Rows = memo(function Rows({
 }) {
   const span = to - from;
   const pct = (t: number) => `${((t - from) / span) * 100}%`;
-  const hours: number[] = [];
-  for (let h = Math.ceil(from / HOUR_MS) * HOUR_MS; h <= to; h += HOUR_MS)
-    hours.push(h);
   return (
     <>
-      {hours.map((h) => (
+      {axisTicks(from, to).map((h) => (
         <div
           key={h}
-          className="absolute -inset-y-1 w-px bg-white/[0.05]"
+          className={cn(
+            "absolute -inset-y-1 w-px",
+            h % DAY_MS === 0 ? "bg-white/[0.14]" : "bg-white/[0.05]",
+          )}
           style={{ left: pct(h) }}
         />
       ))}

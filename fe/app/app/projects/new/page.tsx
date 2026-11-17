@@ -21,31 +21,30 @@ import { toast } from "@/components/ui/toast";
 import { $api } from "@/lib/api/openapi-clients";
 import {
   DAY_MS,
-  HOUR_MS,
-  MIN_MS,
-  fmtClock,
+  dayOf,
   fmtDate,
   fmtDur,
   fmtSize,
+  fmtWindow,
+  fromDateTimeInput,
+  toDateTimeInput,
 } from "@/lib/format";
 import { clipsInRange, groupBySink, hourBounds } from "@/lib/media";
 import { useClips, useSinks } from "@/lib/hooks/useMedia";
 import { cn } from "@/lib/utils";
 import {
   CalendarIcon,
+  CalendarRangeIcon,
   CheckIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   InfoIcon,
   MagnetIcon,
-  SunIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-
-const toInput = (t: number) => fmtClock(t, false);
 
 export default function NewProjectPage() {
   const router = useRouter();
@@ -57,29 +56,26 @@ export default function NewProjectPage() {
   const days = useMemo(() => {
     const counts = new Map<number, number>();
     for (const c of clips ?? []) {
-      const d = Math.floor(c.start / DAY_MS) * DAY_MS;
+      const d = dayOf(c.start);
       counts.set(d, (counts.get(d) ?? 0) + 1);
     }
     return [...counts].sort((x, y) => y[0] - x[0]);
   }, [clips]);
 
   // Defaults (latest day, every sink, the whole day) apply until the user
-  // picks something, since the data loads after the first render.
-  const [dayPick, setDayPick] = useState<number | null>(null);
-  const midnight =
-    dayPick ?? days[0]?.[0] ?? hourBounds([])[0];
+  // picks something, since the data loads after the first render. A project
+  // can cover a run of days: `firstDay` to `lastDay`, both UTC midnights.
+  const [daysPick, setDaysPick] = useState<[number, number] | null>(null);
+  const latest = days[0]?.[0] ?? hourBounds([])[0];
+  const [firstDay, lastDay] = daysPick ?? [latest, latest];
   const dayClips = useMemo(
-    () => clipsInRange(clips ?? [], midnight, midnight + DAY_MS),
-    [clips, midnight],
+    () => clipsInRange(clips ?? [], firstDay, lastDay + DAY_MS),
+    [clips, firstDay, lastDay],
   );
   const clipsBySink = useMemo(() => groupBySink(dayClips), [dayClips]);
 
-  // Chart spans the hours that have footage on the shoot day.
+  // Chart spans the hours that have footage on the picked days.
   const [DAY_FROM, DAY_TO] = useMemo(() => hourBounds(dayClips), [dayClips]);
-  const fromInput = (v: string) => {
-    const [h, m] = v.split(":").map(Number);
-    return midnight + (h || 0) * HOUR_MS + (m || 0) * MIN_MS;
-  };
 
   const [name, setName] = useState("");
   const [selectedPick, setSelected] = useState<Set<string> | null>(null);
@@ -100,9 +96,18 @@ export default function NewProjectPage() {
       | { start: number; end: number }
       | ((r: { start: number; end: number }) => { start: number; end: number }),
   ) => setRangePick(typeof r === "function" ? r(range) : r);
-  const pickDay = (d: number) => {
-    setDayPick(d);
+  // Moving one end past the other drags it along.
+  const pickDays = (which: "first" | "last", d: number) => {
+    setDaysPick(
+      which === "first"
+        ? [d, Math.max(d, lastDay)]
+        : [Math.min(d, firstDay), d],
+    );
     setRangePick(null);
+  };
+  const setRangeEdge = (edge: "start" | "end", v: string) => {
+    const ms = fromDateTimeInput(v);
+    if (!Number.isNaN(ms)) setRange((r) => ({ ...r, [edge]: ms }));
   };
 
   const create = $api.useMutation("post", "/api/projects", {
@@ -187,48 +192,20 @@ export default function NewProjectPage() {
                       onChange={(e) => setName(e.target.value)}
                     />
                   </div>
-                  <div className="flex flex-col gap-1.5">
-                    <Label>Shoot date</Label>
-<DropdownMenu>
-                      <DropdownMenuTrigger
-                        render={
-                          <Button
-                            variant="outline"
-                            className="h-7 justify-start w-44"
-                            disabled={!days.length}
-                          />
-                        }
-                      >
-                        <CalendarIcon data-icon="inline-start" />
-                        <span className="flex-1 text-left">
-                          {fmtDate(midnight, true)}
-                        </span>
-                        <ChevronDownIcon
-                          data-icon="inline-end"
-                          className="opacity-60"
-                        />
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent className="w-52 max-h-80">
-                        <DropdownMenuGroup>
-                          <DropdownMenuLabel>Days with footage</DropdownMenuLabel>
-                          <DropdownMenuRadioGroup
-                            value={midnight}
-                            onValueChange={(v) => pickDay(v as number)}
-                          >
-                            {days.map(([d, n]) => (
-                              <DropdownMenuRadioItem key={d} value={d} closeOnClick>
-                                <span className="flex-1">
-                                  {fmtDate(d, true)}
-                                </span>
-                                <span className="tc text-[0.65rem] text-muted-foreground">
-                                  {n}
-                                </span>
-                              </DropdownMenuRadioItem>
-                            ))}
-                          </DropdownMenuRadioGroup>
-                        </DropdownMenuGroup>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                  <div className="flex items-end gap-2">
+                    <DayPicker
+                      label="First day"
+                      days={days}
+                      value={firstDay}
+                      onChange={(d) => pickDays("first", d)}
+                    />
+                    <span className="pb-1.5 text-muted-foreground">–</span>
+                    <DayPicker
+                      label="Last day"
+                      days={days}
+                      value={lastDay}
+                      onChange={(d) => pickDays("last", d)}
+                    />
                   </div>
                 </div>
               </Section>
@@ -242,15 +219,10 @@ export default function NewProjectPage() {
                     <Label htmlFor="from">From</Label>
                     <Input
                       id="from"
-                      type="time"
-                      className="w-28 tc"
-                      value={toInput(range.start)}
-                      onChange={(e) =>
-                        setRange((r) => ({
-                          ...r,
-                          start: fromInput(e.target.value),
-                        }))
-                      }
+                      type="datetime-local"
+                      className="w-46 tc"
+                      value={toDateTimeInput(range.start)}
+                      onChange={(e) => setRangeEdge("start", e.target.value)}
                     />
                   </div>
                   <span className="pb-1.5 text-muted-foreground">–</span>
@@ -258,30 +230,28 @@ export default function NewProjectPage() {
                     <Label htmlFor="to">To</Label>
                     <Input
                       id="to"
-                      type="time"
-                      className="w-28 tc"
-                      value={toInput(range.end)}
-                      onChange={(e) =>
-                        setRange((r) => ({
-                          ...r,
-                          end: fromInput(e.target.value),
-                        }))
-                      }
+                      type="datetime-local"
+                      className="w-46 tc"
+                      value={toDateTimeInput(range.end)}
+                      onChange={(e) => setRangeEdge("end", e.target.value)}
                     />
                   </div>
                   <span className="pb-1.5 pl-2 tc text-xs text-muted-foreground">
                     {fmtDur(range.end - range.start)}
                   </span>
                   <div className="flex-1" />
-                  <Button variant="ghost" onClick={snapToFootage}>
-                    <MagnetIcon data-icon="inline-start" /> Snap to footage
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    onClick={() => setRange({ start: DAY_FROM, end: DAY_TO })}
-                  >
-                    <SunIcon data-icon="inline-start" /> Whole day
-                  </Button>
+                  <div className="flex gap-1">
+                    <Button variant="ghost" onClick={snapToFootage}>
+                      <MagnetIcon data-icon="inline-start" /> Snap to footage
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      onClick={() => setRange({ start: DAY_FROM, end: DAY_TO })}
+                    >
+                      <CalendarRangeIcon data-icon="inline-start" />
+                      {firstDay === lastDay ? "Whole day" : "All days"}
+                    </Button>
+                  </div>
                 </div>
 
                 <div className="rounded-md bg-well ring-1 ring-inset ring-hairline px-3 pt-8 pb-3">
@@ -353,8 +323,7 @@ export default function NewProjectPage() {
                   {name || "Untitled project"}
                 </div>
                 <div className="tc text-[0.7rem] text-muted-foreground mt-0.5">
-                  {fmtDate(range.start)} · {fmtClock(range.start, false)}–
-                  {fmtClock(range.end, false)}
+                  {fmtWindow(range.start, range.end)}
                 </div>
               </div>
               <div className="p-4 flex flex-col gap-2">
@@ -427,6 +396,58 @@ export default function NewProjectPage() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function DayPicker({
+  label,
+  days,
+  value,
+  onChange,
+}: {
+  label: string;
+  /** UTC midnights with their clip counts, newest first. */
+  days: [number, number][];
+  value: number;
+  onChange: (day: number) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label>{label}</Label>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              variant="outline"
+              className="h-7 justify-start w-44"
+              disabled={!days.length}
+            />
+          }
+        >
+          <CalendarIcon data-icon="inline-start" />
+          <span className="flex-1 text-left">{fmtDate(value, true)}</span>
+          <ChevronDownIcon data-icon="inline-end" className="opacity-60" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent className="w-52 max-h-80">
+          <DropdownMenuGroup>
+            <DropdownMenuLabel>Days with footage</DropdownMenuLabel>
+            <DropdownMenuRadioGroup
+              value={value}
+              onValueChange={(v) => onChange(v as number)}
+            >
+              {days.map(([d, n]) => (
+                <DropdownMenuRadioItem key={d} value={d} closeOnClick>
+                  <span className="flex-1">{fmtDate(d, true)}</span>
+                  <span className="tc text-[0.65rem] text-muted-foreground">
+                    {n}
+                  </span>
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }

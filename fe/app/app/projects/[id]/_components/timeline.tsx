@@ -2,7 +2,7 @@
 
 import { Frame } from "@/app/app/_components/frame";
 import { TrackToggle } from "@/app/app/_components/panel";
-import { fmtClock, fmtTC, hash } from "@/lib/format";
+import { DAY_MS, fmtClock, fmtDate, fmtTC, hash } from "@/lib/format";
 import { type Clip, type Marker, type SinkView } from "@/lib/media";
 import { cn } from "@/lib/utils";
 import {
@@ -32,9 +32,10 @@ const HEADER_W = 216;
 const RULER_H = 30;
 const rowHeight = (s: SinkView) => (s.kind === "audio" ? 48 : 68);
 
-const TICKS = [1, 5, 10, 30, 60, 300, 600, 900, 1800, 3600].map(
-  (s) => s * 1000,
-);
+const TICKS = [
+  1, 5, 10, 30, 60, 300, 600, 900, 1800, 3600, 7200, 10800, 21600, 43200,
+  86400,
+].map((s) => s * 1000);
 
 export function Timeline({
   tracks,
@@ -306,9 +307,19 @@ const Ruler = memo(function Ruler({
           className="absolute bottom-0 h-full flex items-start"
           style={{ left: (tt - from) * pxPerMs }}
         >
-          <span className="absolute bottom-0 h-2.5 w-px bg-white/30" />
-          <span className="tc pl-1.5 pt-1.5">
-            {fmtClock(tt, major < 60_000)}
+          <span
+            className={cn(
+              "absolute bottom-0 w-px",
+              tt % DAY_MS === 0 ? "h-full bg-white/45" : "h-2.5 bg-white/30",
+            )}
+          />
+          <span
+            className={cn(
+              "tc pl-1.5 pt-1.5 whitespace-nowrap",
+              tt % DAY_MS === 0 && "text-foreground/85",
+            )}
+          >
+            {tt % DAY_MS === 0 ? fmtDate(tt) : fmtClock(tt, major < 60_000)}
           </span>
         </div>
       ))}

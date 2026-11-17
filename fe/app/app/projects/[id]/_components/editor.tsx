@@ -12,7 +12,9 @@ import {
   fmtDur,
   fmtSize,
   fmtTC,
+  fmtWindow,
   hash,
+  spansDays,
 } from "@/lib/format";
 import { toast } from "@/components/ui/toast";
 import { fetchClient } from "@/lib/api/openapi-clients";
@@ -97,6 +99,7 @@ export function Editor({
   clips: Clip[];
 }) {
   const { start: from, end: to } = project;
+  const multiDay = spansDays(from, to);
 
   const tracks: Track[] = useMemo(() => {
     const bySink = groupBySink(clips);
@@ -452,7 +455,7 @@ export function Editor({
           <ChevronRightIcon className="size-3 text-muted-foreground" />
           <span className="font-medium">{project.name}</span>
           <span className="tc ml-1.5 text-[0.65rem] text-muted-foreground">
-            {fmtDate(from)} · {fmtClock(from, false)}–{fmtClock(to, false)}
+            {fmtWindow(from, to)}
           </span>
         </nav>
       </AppHeader>
@@ -532,6 +535,7 @@ export function Editor({
                             />
                             <span className="flex-1 truncate">{m.label}</span>
                             <span className="tc text-[0.65rem] text-muted-foreground">
+                              {multiDay && `${fmtDate(m.t)} `}
                               {fmtClock(m.t)}
                             </span>
                           </button>
@@ -615,6 +619,7 @@ export function Editor({
                 />
                 <Transport
                   t={t}
+                  multiDay={multiDay}
                   from={from}
                   to={to}
                   playing={playing}
@@ -641,6 +646,7 @@ export function Editor({
                           .sink
                       }
                       t={t}
+                      multiDay={multiDay}
                       flag={flags[focusClip.id]}
                       onFlag={flag}
                       onSeek={seek}
@@ -1001,6 +1007,7 @@ const ScrubMarkers = memo(function ScrubMarkers({
 
 function Transport({
   t,
+  multiDay,
   from,
   to,
   playing,
@@ -1012,6 +1019,7 @@ function Transport({
   onMarker,
 }: {
   t: number;
+  multiDay: boolean;
   from: number;
   to: number;
   playing: boolean;
@@ -1029,6 +1037,11 @@ function Transport({
         <span className="tc text-[0.95rem] font-medium text-playhead">
           {fmtTC(t)}
         </span>
+        {multiDay && (
+          <span className="hidden xl:inline tc text-[0.7rem] text-muted-foreground truncate">
+            {fmtDate(t)}
+          </span>
+        )}
         {playing && rate !== 1 && (
           <span className="tc rounded-[3px] bg-primary/20 px-1 text-[0.6rem] text-primary">
             {rate > 0 ? `${rate}×` : `◀ ${-rate}×`}
@@ -1133,6 +1146,7 @@ function Inspector({
   clip,
   sink,
   t,
+  multiDay,
   flag,
   onFlag,
   onSeek,
@@ -1140,6 +1154,7 @@ function Inspector({
   clip: Clip;
   sink: SinkView;
   t: number;
+  multiDay: boolean;
   flag?: Flag;
   onFlag: (f: Flag | null) => void;
   onSeek: (t: number) => void;
@@ -1205,6 +1220,7 @@ function Inspector({
 
       <div className="flex flex-col gap-1.5">
         <div className="eyebrow mb-0.5">Timing</div>
+        {multiDay && <Stat label="Date" value={fmtDate(clip.start)} />}
         <Stat label="Captured" value={fmtClock(clip.start)} />
         <Stat label="Ends" value={fmtClock(clip.start + clip.duration)} />
         <Stat label="Duration" value={fmtDur(clip.duration)} />

@@ -18,7 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
 import { $api } from "@/lib/api/openapi-clients";
-import { fmtAgo, fmtClock, fmtDate, fmtDur } from "@/lib/format";
+import { fmtAgo, fmtDur, fmtWindow } from "@/lib/format";
 import { useClips, useProjects, useSinks } from "@/lib/hooks/useMedia";
 import {
   type Clip,
@@ -170,8 +170,7 @@ function ProjectCard({
               {p.name}
             </div>
             <div className="tc text-[0.7rem] text-muted-foreground mt-0.5">
-              {fmtDate(p.start)} · {fmtClock(p.start, false)}–
-              {fmtClock(p.end, false)}
+              {fmtWindow(p.start, p.end)}
             </div>
           </div>
           <span className="tc text-[0.65rem] text-muted-foreground whitespace-nowrap">

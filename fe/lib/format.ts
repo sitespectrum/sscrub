@@ -55,6 +55,30 @@ export function fmtDate(ms: number, year = false) {
   });
 }
 
+/** Start of the UTC day containing `ms`. */
+export const dayOf = (ms: number) => Math.floor(ms / DAY_MS) * DAY_MS;
+
+/** Whether [start, end) crosses a UTC midnight. */
+export const spansDays = (start: number, end: number) =>
+  dayOf(start) !== dayOf(Math.max(start, end - 1));
+
+/**
+ * A time window: "Tue, Nov 3 · 10:00–14:00" within one day, otherwise
+ * "Tue, Nov 3 10:00 – Thu, Nov 5 18:00".
+ */
+export function fmtWindow(start: number, end: number) {
+  if (!spansDays(start, end))
+    return `${fmtDate(start)} · ${fmtClock(start, false)}–${fmtClock(end, false)}`;
+  return `${fmtDate(start)} ${fmtClock(start, false)} – ${fmtDate(end)} ${fmtClock(end, false)}`;
+}
+
+/** UTC value for an `<input type="datetime-local">`. */
+export const toDateTimeInput = (ms: number) =>
+  new Date(ms).toISOString().slice(0, 16);
+
+/** Parses an `<input type="datetime-local">` value as UTC; NaN if invalid. */
+export const fromDateTimeInput = (v: string) => Date.parse(`${v}Z`);
+
 /** "just now", "5m ago", "3h ago", "Yesterday", then a short date. */
 export function fmtAgo(ms: number, now = Date.now()) {
   const s = Math.max(0, (now - ms) / 1000);
