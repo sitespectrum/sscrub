@@ -62,11 +62,13 @@ import Link from "next/link";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toProject } from "@/lib/hooks/useMedia";
 import { useQueryClient } from "@tanstack/react-query";
-import { Monitor, type Track } from "./monitor";
+import { DEFAULT_MIX, type TrackMix } from "./media";
+import { Monitor, type MonitorMedia, type Track } from "./monitor";
 import { type ClipFilter, Timeline } from "./timeline";
 
 const MARKER_COLORS = ["#ef4444", "#f59e0b", "#22c55e", "#3b82f6", "#a855f7"];
 const HISTORY_LIMIT = 200;
+const mixKey = (projectId: string) => `sscrub:mix:${projectId}`;
 const MOD =
   typeof navigator !== "undefined" && /Mac|iP(hone|ad)/.test(navigator.platform)
     ? "⌘"
@@ -126,6 +128,24 @@ export function Editor({
     [tracks, from, to],
   );
 
+  // Merged spans where at least one sink is rolling; playback skips the gaps.
+  const coverage = useMemo(() => {
+    const spans = tracks
+      .flatMap((tr) => tr.clips)
+      .map((c): [number, number] => [
+        Math.max(from, c.start),
+        Math.min(to, c.start + c.duration),
+      ])
+      .sort((a, b) => a[0] - b[0]);
+    const out: [number, number][] = [];
+    for (const [s, e] of spans) {
+      const last = out.at(-1);
+      if (last && s <= last[1]) last[1] = Math.max(last[1], e);
+      else out.push([s, e]);
+    }
+    return out;
+  }, [tracks, from, to]);
+
   // Start where the most sinks are rolling at once. That count only changes
   // at a clip start, so those are the only candidates worth checking.
   const [t, setT] = useState(() => {
@@ -140,6 +160,43 @@ export function Editor({
   });
   const [playing, setPlaying] = useState(false);
   const [rate, setRate] = useState(1);
+  // Real media is mounted from the moment 1× playback starts until the next
+  // seek, so pausing keeps the decoded frame on screen.
+  const [mediaOn, setMediaOn] = useState(false);
+  // Clips whose media is still buffering; the clock holds until it's empty.
+  const [waiting, setWaiting] = useState<ReadonlySet<string>>(new Set());
+  const onWaiting = useCallback(
+    (id: string, w: boolean) =>
+      setWaiting((cur) => {
+        if (cur.has(id) === w) return cur;
+        const n = new Set(cur);
+        if (w) n.add(id);
+        else n.delete(id);
+        return n;
+      }),
+    [],
+  );
+  const [mix, setMix] = useState<Record<string, TrackMix>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem(mixKey(project.id)) ?? "{}");
+    } catch {
+      return {};
+    }
+  });
+  const updateMix = useCallback(
+    (sinkId: string, patch: Partial<TrackMix>) =>
+      setMix((cur) => {
+        const n = {
+          ...cur,
+          [sinkId]: { ...DEFAULT_MIX, ...cur[sinkId], ...patch },
+        };
+        try {
+          localStorage.setItem(mixKey(project.id), JSON.stringify(n));
+        } catch {}
+        return n;
+      }),
+    [project.id],
+  );
   const [solo, setSolo] = useState<string | null>(null);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [zoom, setZoom] = useState(1);
@@ -267,27 +324,65 @@ export function Editor({
     setUndoStack((s) => [...s, edit]);
   };
 
+  const realtime = playing && rate === 1;
   const seek = useCallback(
-    (tt: number) => setT(Math.min(to, Math.max(from, tt))),
-    [from, to],
+    (tt: number) => {
+      // media follows a jump during 1× playback; otherwise it's dropped
+      if (!realtime) setMediaOn(false);
+      setT(Math.min(to, Math.max(from, tt)));
+    },
+    [from, to, realtime],
   );
 
+  const play = (r: number) => {
+    setRate(r);
+    setPlaying(true);
+    setMediaOn(r === 1);
+  };
+  const pause = () => setPlaying(false);
+  const stopForScrub = () => {
+    setPlaying(false);
+    setMediaOn(false);
+  };
+
   // playback loop
+  const stalled = realtime && mediaOn && waiting.size > 0;
   useEffect(() => {
-    if (!playing) return;
+    if (!playing || stalled) return;
     let last = performance.now();
     let raf = requestAnimationFrame(function tick(now) {
       const dt = (now - last) * rate;
       last = now;
       setT((cur) => {
-        const next = cur + dt;
+        let next = cur + dt;
+        if (coverage.length) {
+          if (dt > 0) {
+            const span = coverage.find(([, e]) => next < e);
+            next = span ? Math.max(next, span[0]) : to;
+          } else {
+            const span = coverage.findLast(([s]) => s <= next);
+            next = span ? Math.min(next, span[1] - 1) : from;
+          }
+        }
         if (next >= to || next <= from) setPlaying(false);
         return Math.min(to, Math.max(from, next));
       });
       raf = requestAnimationFrame(tick);
     });
     return () => cancelAnimationFrame(raf);
-  }, [playing, rate, from, to]);
+  }, [playing, stalled, rate, from, to, coverage]);
+
+  const media: MonitorMedia | null = useMemo(
+    () =>
+      mediaOn
+        ? {
+            mode: realtime && !stalled ? "playing" : "paused",
+            mix,
+            onWaiting,
+          }
+        : null,
+    [mediaOn, realtime, stalled, mix, onWaiting],
+  );
 
   const focusClip: Clip | undefined = useMemo(() => {
     const all = tracks.flatMap((tr) => tr.clips);
@@ -341,10 +436,7 @@ export function Editor({
     seek([...editPoints].reverse().find((p) => p < t - 50) ?? from);
   const nextEdit = () => seek(editPoints.find((p) => p > t + 50) ?? to);
 
-  const togglePlay = () => {
-    setRate(1);
-    setPlaying((p) => !p);
-  };
+  const togglePlay = () => (playing ? pause() : play(1));
 
   // keyboard: Premiere-ish
   const keys = useRef<(e: KeyboardEvent) => void>(null);
@@ -360,14 +452,11 @@ export function Editor({
     }
     const step = e.shiftKey ? 10_000 : 1000;
     if (k === " ") togglePlay();
-    else if (k === "k") setPlaying(false);
-    else if (k === "l") {
-      setRate((r) => (playing && r > 0 ? Math.min(r * 2, 32) : 1));
-      setPlaying(true);
-    } else if (k === "j") {
-      setRate((r) => (playing && r < 0 ? Math.max(r * 2, -32) : -1));
-      setPlaying(true);
-    } else if (k === "arrowleft") seek(t - step);
+    else if (k === "k") pause();
+    else if (k === "l") play(playing && rate > 0 ? Math.min(rate * 2, 32) : 1);
+    else if (k === "j")
+      play(playing && rate < 0 ? Math.max(rate * 2, -32) : -1);
+    else if (k === "arrowleft") seek(t - step);
     else if (k === "arrowright") seek(t + step);
     else if (k === "arrowup") prevEdit();
     else if (k === "arrowdown") nextEdit();
@@ -400,6 +489,8 @@ export function Editor({
   const soloTrack = tracks.find((tr) => tr.sink.id === solo);
   const audio = tracks.find((tr) => tr.sink.kind === "audio");
   const audioClip = audio && clipAt(audio.clips, t);
+  const audioMix = (audio && mix[audio.sink.id]) || DEFAULT_MIX;
+  const audioGain = audioMix.muted ? 0 : audioMix.volume;
 
   return (
     <div className="flex-1 min-h-0 flex flex-col">
@@ -605,6 +696,7 @@ export function Editor({
                   solo={solo}
                   t={t}
                   flags={flags}
+                  media={media}
                   onSolo={setSolo}
                   onSeek={seek}
                 />
@@ -615,7 +707,7 @@ export function Editor({
                   to={to}
                   t={t}
                   onSeek={seek}
-                  onScrubStart={() => setPlaying(false)}
+                  onScrubStart={stopForScrub}
                 />
                 <Transport
                   t={t}
@@ -767,8 +859,10 @@ export function Editor({
                 filter={filter}
                 markers={markers}
                 selectedClip={selectedClip}
+                mix={mix}
+                onMix={updateMix}
                 onSeek={seek}
-                onScrubStart={() => setPlaying(false)}
+                onScrubStart={stopForScrub}
                 onSelectClip={setSelectedClip}
                 onSolo={setSolo}
                 onToggleHidden={toggleHidden}
@@ -788,7 +882,10 @@ export function Editor({
                   className="flex-1 justify-center py-0! pr-1!"
                   levels={
                     audioClip
-                      ? [levelAt(audioClip, t, 0), levelAt(audioClip, t, 1)]
+                      ? [
+                          levelAt(audioClip, t, 0) * audioGain,
+                          levelAt(audioClip, t, 1) * audioGain,
+                        ]
                       : [0, 0]
                   }
                 />
@@ -802,7 +899,7 @@ export function Editor({
         </ResizablePanel>
       </ResizablePanelGroup>
 
-      <StatusBar playing={playing} />
+      <StatusBar playing={playing} buffering={stalled} />
     </div>
   );
 }
@@ -1321,7 +1418,13 @@ function Legend({
   );
 }
 
-function StatusBar({ playing }: { playing: boolean }) {
+function StatusBar({
+  playing,
+  buffering,
+}: {
+  playing: boolean;
+  buffering: boolean;
+}) {
   const keys: [string, string][] = [
     ["Space", "Play"],
     ["J K L", "Shuttle"],
@@ -1337,10 +1440,14 @@ function StatusBar({ playing }: { playing: boolean }) {
         <span
           className={cn(
             "size-1.5 rounded-full",
-            playing ? "bg-playhead" : "bg-pick",
+            buffering
+              ? "bg-amber-400 animate-pulse"
+              : playing
+                ? "bg-playhead"
+                : "bg-pick",
           )}
         />
-        {playing ? "Playing" : "Ready"}
+        {buffering ? "Buffering" : playing ? "Playing" : "Ready"}
       </span>
       <span className="tc">25 fps · UTC · Proxies</span>
       <span className="flex-1" />

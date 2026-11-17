@@ -11,6 +11,13 @@ import {
   clipAt,
   nextClip,
 } from "@/lib/media";
+import {
+  DEFAULT_MIX,
+  type MediaMode,
+  type OnWaiting,
+  type TrackMix,
+  TrackMedia,
+} from "./media";
 
 export interface Track {
   sink: SinkView;
@@ -20,12 +27,20 @@ export interface Track {
 
 export type { Flag };
 
+/** Real playback: off (filmstrip only) or the shared media state. */
+export interface MonitorMedia {
+  mode: MediaMode;
+  mix: Record<string, TrackMix>;
+  onWaiting: OnWaiting;
+}
+
 export function Monitor({
   tracks,
   hidden,
   solo,
   t,
   flags,
+  media,
   onSolo,
   onSeek,
 }: {
@@ -34,20 +49,43 @@ export function Monitor({
   solo: string | null;
   t: number;
   flags: Record<string, Flag>;
+  media: MonitorMedia | null;
   onSolo: (id: string | null) => void;
   onSeek: (t: number) => void;
 }) {
   const visible = tracks.filter((tr) => !hidden.has(tr.sink.id));
   const soloTrack = tracks.find((tr) => tr.sink.id === solo);
 
+  // Tracks without a large tile still play their sound from here.
+  const onScreen = soloTrack ? [soloTrack] : visible;
+  const bank = media && (
+    <div className="hidden">
+      {tracks
+        .filter((tr) => !onScreen.includes(tr))
+        .map((tr) => (
+          <TrackMedia
+            key={tr.sink.id}
+            track={tr}
+            t={t}
+            mode={media.mode}
+            mix={media.mix[tr.sink.id] ?? DEFAULT_MIX}
+            video={false}
+            onWaiting={media.onWaiting}
+          />
+        ))}
+    </div>
+  );
+
   if (soloTrack) {
     return (
       <div className="flex-1 min-h-0 flex flex-col bg-black">
+        {bank}
         <div className="flex-1 min-h-0 flex p-3">
           <Tile
             track={soloTrack}
             t={t}
             flags={flags}
+            media={media}
             onSeek={onSeek}
             size="lg"
           />
@@ -91,12 +129,14 @@ export function Monitor({
         gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`,
       }}
     >
+      {bank}
       {visible.map((tr) => (
         <Tile
           key={tr.sink.id}
           track={tr}
           t={t}
           flags={flags}
+          media={media}
           onSeek={onSeek}
           size="md"
           onClick={() => onSolo(tr.sink.id)}
@@ -110,6 +150,7 @@ function Tile({
   track,
   t,
   flags,
+  media,
   onSeek,
   onClick,
   active,
@@ -118,6 +159,7 @@ function Tile({
   track: Track;
   t: number;
   flags: Record<string, Flag>;
+  media?: MonitorMedia | null;
   onSeek: (t: number) => void;
   onClick?: () => void;
   active?: boolean;
@@ -181,6 +223,17 @@ function Tile({
               </>
             )}
           </div>
+        )}
+
+        {media && !sm && (
+          <TrackMedia
+            track={track}
+            t={t}
+            mode={media.mode}
+            mix={media.mix[sink.id] ?? DEFAULT_MIX}
+            video
+            onWaiting={media.onWaiting}
+          />
         )}
 
         {/* label */}

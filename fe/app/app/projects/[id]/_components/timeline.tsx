@@ -9,8 +9,10 @@ import {
   CheckIcon,
   EyeIcon,
   EyeOffIcon,
-  LockIcon,
   MaximizeIcon,
+  Volume1Icon,
+  Volume2Icon,
+  VolumeXIcon,
   XIcon,
 } from "lucide-react";
 import {
@@ -22,6 +24,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { DEFAULT_MIX, type TrackMix } from "./media";
 import type { Flag, Track } from "./monitor";
 
 export type { Marker };
@@ -50,6 +53,8 @@ export function Timeline({
   filter,
   markers,
   selectedClip,
+  mix,
+  onMix,
   onSeek,
   onScrubStart,
   onSelectClip,
@@ -68,6 +73,8 @@ export function Timeline({
   filter: ClipFilter;
   markers: Marker[];
   selectedClip: string | null;
+  mix: Record<string, TrackMix>;
+  onMix: (sinkId: string, patch: Partial<TrackMix>) => void;
   onSeek: (t: number) => void;
   onScrubStart: () => void;
   onSelectClip: (id: string | null) => void;
@@ -208,6 +215,8 @@ export function Timeline({
               track={tr}
               soloed={solo === tr.sink.id}
               hidden={hidden.has(tr.sink.id)}
+              mix={mix[tr.sink.id] ?? DEFAULT_MIX}
+              onMix={(patch) => onMix(tr.sink.id, patch)}
               onSolo={() => onSolo(solo === tr.sink.id ? null : tr.sink.id)}
               onToggleHidden={() => onToggleHidden(tr.sink.id)}
             />
@@ -331,16 +340,26 @@ function TrackHeader({
   track,
   soloed,
   hidden,
+  mix,
+  onMix,
   onSolo,
   onToggleHidden,
 }: {
   track: Track;
   soloed: boolean;
   hidden: boolean;
+  mix: TrackMix;
+  onMix: (patch: Partial<TrackMix>) => void;
   onSolo: () => void;
   onToggleHidden: () => void;
 }) {
   const { sink } = track;
+  const silent = mix.muted || mix.volume === 0;
+  const VolumeIcon = silent
+    ? VolumeXIcon
+    : mix.volume < 0.5
+      ? Volume1Icon
+      : Volume2Icon;
   return (
     <div
       className={cn(
@@ -367,11 +386,36 @@ function TrackHeader({
             "text-xs font-medium truncate",
             hidden && "text-muted-foreground",
           )}
+          title={sink.model ? `${sink.name} · ${sink.model}` : sink.name}
         >
           {sink.name}
         </div>
-        <div className="text-[0.6rem] text-muted-foreground truncate">
-          {sink.model}
+        <div className="flex items-center gap-1.5">
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.01}
+            value={mix.volume}
+            onChange={(e) =>
+              onMix({ volume: +e.target.value, muted: false })
+            }
+            onDoubleClick={() => onMix({ volume: 1 })}
+            aria-label={`${sink.name} volume`}
+            title="Volume (double-click to reset)"
+            className={cn(
+              "range-slim h-3 flex-1 min-w-0",
+              mix.muted && "opacity-40",
+            )}
+          />
+          <span
+            className={cn(
+              "tc w-6 text-right text-[0.55rem] text-muted-foreground",
+              mix.muted && "opacity-40",
+            )}
+          >
+            {Math.round(mix.volume * 100)}
+          </span>
         </div>
       </div>
       <div className="flex items-center">
@@ -386,8 +430,19 @@ function TrackHeader({
         >
           {hidden ? <EyeOffIcon /> : <EyeIcon />}
         </TrackToggle>
-        <TrackToggle title="Lock track">
-          <LockIcon />
+        <TrackToggle
+          title={mix.muted ? "Unmute" : "Mute"}
+          on={silent}
+          activeClass="text-reject"
+          onClick={() =>
+            onMix(
+              mix.volume === 0
+                ? { volume: 1, muted: false }
+                : { muted: !mix.muted },
+            )
+          }
+        >
+          <VolumeIcon />
         </TrackToggle>
       </div>
     </div>
