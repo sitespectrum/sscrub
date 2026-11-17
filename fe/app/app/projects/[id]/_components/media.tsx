@@ -40,7 +40,11 @@ const PRELOAD_MS = 3000;
 const SEEK_DRIFT_S = 1;
 /** Drift that is left alone, so the pitch doesn't wobble. */
 const DEADBAND_S = 0.1;
-/** Give up on a clip that has not become playable in this long. */
+/**
+ * Stop holding the clock for a clip that has been buffering this long. One
+ * that never showed a frame is given up on (filmstrip instead); one that has
+ * played keeps going and is lined up again once it recovers.
+ */
 const STALL_TIMEOUT_MS = 10_000;
 
 const playable = (c: Clip) =>
@@ -102,38 +106,49 @@ function ClipMedia({
   onWaiting: OnWaiting;
 }) {
   const ref = useRef<HTMLVideoElement & HTMLAudioElement>(null);
+  // has loaded data (sound or picture)
   const [hasFrame, setHasFrame] = useState(false);
+  // has a decoded picture; a browser without the codec (say HEVC) still
+  // plays the sound but leaves videoWidth at 0
+  const [picture, setPicture] = useState(false);
   const [failed, setFailed] = useState(false);
   const offset = (t - clip.start) / 1000;
   const started = offset >= 0;
 
   // Latest values for the event handlers below.
-  const live = useRef({ started, failed, onWaiting });
+  const live = useRef({ started, failed, hasFrame, onWaiting });
   useEffect(() => {
-    live.current = { started, failed, onWaiting };
+    live.current = { started, failed, hasFrame, onWaiting };
   });
 
   // Readiness: a started clip blocks the clock until it can play through.
   const reported = useRef(false);
   // set by a "waiting" event, i.e. the element ran out of data while playing
   const stuck = useRef(false);
+  // the clock stopped waiting for this clip after STALL_TIMEOUT_MS
+  const released = useRef(false);
   const stallTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const report = () => {
     const el = ref.current;
-    const { started, failed, onWaiting } = live.current;
+    const { started, failed, hasFrame, onWaiting } = live.current;
     // A playing element's readyState can dip for a frame without it actually
     // stopping, so while it plays only its own "waiting" event counts.
     const waiting =
       !!el &&
       started &&
       !failed &&
+      !released.current &&
       (el.seeking || stuck.current || (el.paused && el.readyState < 3));
     if (waiting === reported.current) return;
     reported.current = waiting;
     onWaiting(clip.id, waiting);
     clearTimeout(stallTimer.current);
     if (waiting)
-      stallTimer.current = setTimeout(() => setFailed(true), STALL_TIMEOUT_MS);
+      stallTimer.current = setTimeout(() => {
+        if (!hasFrame) return setFailed(true);
+        released.current = true;
+        reportRef.current();
+      }, STALL_TIMEOUT_MS);
   };
   const reportRef = useRef(report);
   useEffect(() => {
@@ -146,6 +161,7 @@ function ClipMedia({
     const update = () => reportRef.current();
     const frame = () => {
       setHasFrame(true);
+      if (el instanceof HTMLVideoElement && el.videoWidth > 0) setPicture(true);
       update();
     };
     const stop = () => {
@@ -154,6 +170,7 @@ function ClipMedia({
     };
     const go = () => {
       stuck.current = false;
+      released.current = false;
       update();
     };
     const fail = () => setFailed(true);
@@ -186,7 +203,11 @@ function ClipMedia({
     el.volume = mix.volume;
     el.muted = mix.muted;
     report();
-    if (failed) return;
+    if (failed) {
+      // the filmstrip takes over; don't leave its sound running unsynced
+      if (!el.paused) el.pause();
+      return;
+    }
 
     if (!started) {
       if (!el.paused) el.pause();
@@ -238,7 +259,7 @@ function ClipMedia({
       disablePictureInPicture
       className={cn(
         "absolute inset-0 size-full object-contain bg-black pointer-events-none",
-        !(hasFrame && started && !failed) && "invisible",
+        !(picture && started && !failed) && "invisible",
       )}
     />
   );
