@@ -34,11 +34,13 @@ A tool for culling through footage. **Sinks** represent recording devices (camer
 **Frontend**
 - The API client is `fe/lib/api/openapi-clients.ts` (`$api` = openapi-react-query over openapi-fetch). Its types are generated in `fe/lib/api/sscrub-api-schema.ts`. After changing backend DTOs, run `pnpm openapi-codegen` with the API running on :5200.
 - Client state uses jotai (`fe/lib/atoms.ts`), and formatting helpers are in `fe/lib/format.ts` / `fe/lib/utils.ts`.
-- `app/app/(library)/` is real and wired to the API (library grouped by day, newest first; sinks; upload tray; attention page). `app/app/projects/**` (project list, new project, editor/timeline/monitor) still runs on **placeholder data** from `fe/lib/placeholder/`, because the backend has no projects yet.
+- `app/app/(library)/` is real and wired to the API (library grouped by day, newest first; sinks; upload tray; attention page). `app/app/projects/**` (project list, new project, editor) reads through `fe/lib/hooks/useMedia.ts`, which maps API types to the view models in `fe/lib/media.ts` (`SinkView`, `Clip` with its `asset`, `Project`).
+- **Projects** (`be/Endpoints/ProjectEndpoints.cs`) store a name, a UTC window, and ordered `SinkIds`, which are a JSON list rather than a foreign key, so deleted sinks are dropped on read. A project also stores per-asset pick/reject flags and markers. The editor saves flags and markers optimistically and reverts a change if its request fails. Undo/redo, share and export are still UI only.
+- All `DateTime`s go through a UTC value converter in `SscrubDbContext`, so the API always returns `...Z` timestamps. Parse them with `Date.parse` and display them with the UTC formatters in `fe/lib/format.ts`.
 - Large libraries: cards show static thumbnails and load the filmstrip only on hover, with lazy images and off‑screen `content-visibility`. Keep it that way.
 - **Read `fe/AGENTS.md`**: this Next.js version differs from training data, so check `fe/node_modules/next/dist/docs/` before writing Next code. `next dev` re-adds that file automatically.
 
-**Not built yet / known gaps:** auth (there's a `Secrets__JwtKey` and an auth/refresh middleware in the client, but no auth endpoints), projects backend, audio waveforms (designed in an earlier chat, not implemented), and H.264 preview transcodes. HEVC sources don't play in Firefox on Windows without the HEVC extension.
+**Not built yet / known gaps:** auth (there's a `Secrets__JwtKey` and an auth/refresh middleware in the client, but no auth endpoints), audio waveforms (designed in an earlier chat, not implemented), and H.264 preview transcodes. HEVC sources don't play in Firefox on Windows without the HEVC extension.
 
 ## Running locally
 
@@ -53,7 +55,7 @@ cd fe && pnpm install && pnpm dev   # :5201
 ```
 The proxy runs with `wrangler dev` in `cf-b2-proxy/` on :8787 (`appsettings.Development.json` points `AssetProxy:BaseUrl` there). The backend needs `ffmpeg`/`ffprobe` at the paths in `MediaProcessing` (default `/usr/bin/`). The SQLite DB and the processing workdir live in `be/data/`, and migrations are applied on startup.
 
-Note: `dotnet` is not installed in the Claude Code distrobox, so backend builds have to run on the host.
+Note: `dotnet` is not installed in the Claude Code distrobox. Run it on the host through `distrobox-host-exec` with the `/var/home/...` path. The host only has the .NET 11 runtime, so set `DOTNET_ROLL_FORWARD=Major` to run the net10 app, and for `~/.dotnet/tools/dotnet-ef` also set `DOTNET_ROOT=/home/linuxbrew/.linuxbrew/Cellar/dotnet/11.0.100/libexec`. Rebuild after `migrations add`, because it builds *before* writing the migration.
 
 ## Checks
 
